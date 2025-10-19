@@ -1,0 +1,79 @@
+## @file
+# USB Xbox 360 Controller to Keyboard Driver.
+#
+# This driver consumes USB I/O Protocol and Device Path Protocol, and produces
+# Simple Text Input Protocol and Simple Text Input Ex Protocol by mapping input
+# data from a wired Xbox 360 controller (VID 0x045E, PID 0x028E) to keyboard
+# events. It reuses the standard USB keyboard queues and HII keyboard layout so
+# the controller can be used anywhere a UEFI keyboard is expected.
+#
+# Copyright (c) 2025, Chenx Dust. All rights reserved.<BR>
+# Copyright (c) 2006 - 2018, Intel Corporation. All rights reserved.<BR>
+#
+#  SPDX-License-Identifier: BSD-2-Clause-Patent
+#
+#
+##
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = UsbXbox360Dxe
+  MODULE_UNI_FILE                = UsbXbox360Dxe.uni
+  FILE_GUID                      = 3563DF2F-F37B-4D8E-AE00-EC90EC5E6679
+  MODULE_TYPE                    = UEFI_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = USBKeyboardDriverBindingEntryPoint
+
+[Sources]
+  EfiKey.c
+  EfiKey.h
+  KeyBoard.c
+  ComponentName.c
+  KeyBoard.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  MemoryAllocationLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiDriverEntryPoint
+  UefiRuntimeServicesTableLib
+  BaseMemoryLib
+  ReportStatusCodeLib
+  DebugLib
+  PcdLib
+  UefiUsbLib
+  HiiLib
+
+[Guids]
+  #
+  # Event registered to EFI_HII_SET_KEYBOARD_LAYOUT_EVENT_GUID group,
+  # which will be triggered by EFI_HII_DATABASE_PROTOCOL.SetKeyboardLayout().
+  #
+  gEfiHiiKeyBoardLayoutGuid                     ## SOMETIMES_CONSUMES ## Event
+  gUsbKeyboardLayoutPackageGuid                 ## SOMETIMES_CONSUMES ## HII
+  gUsbKeyboardLayoutKeyGuid                     ## SOMETIMES_PRODUCES ## UNDEFINED
+
+[Protocols]
+  gEfiUsbIoProtocolGuid                         ## TO_START
+  gEfiDevicePathProtocolGuid                    ## TO_START
+  gEfiSimpleTextInProtocolGuid                  ## BY_START
+  gEfiSimpleTextInputExProtocolGuid             ## BY_START
+  #
+  # If HII Database Protocol exists, then keyboard layout from HII database is used.
+  # Otherwise, USB keyboard module tries to use its carried default layout.
+  #
+  gEfiHiiDatabaseProtocolGuid                   ## SOMETIMES_CONSUMES
+
+[FeaturePcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdDisableDefaultKeyboardLayoutInUsbKbDriver ## CONSUMES
+
+# [Event]
+# EVENT_TYPE_RELATIVE_TIMER        ## CONSUMES
+#
+
+[UserExtensions.TianoCore."ExtraFiles"]
+  UsbXbox360DxeExtra.uni

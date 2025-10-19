@@ -1,0 +1,17 @@
+// /** @file
+// USB Xbox 360 Controller to Keyboard Driver strings.
+//
+// Maps a wired Xbox 360 controller (VID 0x045E, PID 0x028E) to UEFI keyboard input.
+//
+// Copyright (c) 2025, Chenx Dust. All rights reserved.<BR>
+// Copyright (c) 2006 - 2024, Intel Corporation. All rights reserved.<BR>
+//
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+//
+// **/
+
+
+#string STR_MODULE_ABSTRACT             #language en-US "Maps an Xbox 360 controller to the UEFI keyboard protocols"
+
+#string STR_MODULE_DESCRIPTION          #language en-US "Consumes USB I/O Protocol and Device Path Protocol for a wired Xbox 360 controller (VID 045E, PID 028E) and produces Simple Text Input and Simple Text Input Ex Protocol events by translating controller buttons and axes into keyboard scan codes. The standard USB keyboard layout from the HII database is reused so the controller behaves like a conventional keyboard wherever UEFI text input is expected."
+
