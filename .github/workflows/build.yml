@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
     
     steps:
     - name: Checkout repository
@@ -17,8 +19,8 @@ jobs:
       
     - name: Install dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm base-devel git python nasm acpica
         
     - name: Clone EDK2
       run: |
