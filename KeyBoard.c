@@ -2899,12 +2899,14 @@ CalculateMouseMovement (
     // Horizontal primary
     DeltaX = (X > 0) ? Speed : -Speed;
     DeltaY = (Y != 0) ? ((Speed * AbsY) / AbsX) : 0;
-    if (Y < 0) {
+    if (Y > 0) {
+      // Y positive (stick up) = screen up (negative Y)
       DeltaY = -DeltaY;
     }
   } else {
     // Vertical primary
-    DeltaY = (Y > 0) ? Speed : -Speed;
+    // Y positive (stick up) = screen up (negative Y)
+    DeltaY = (Y > 0) ? -Speed : Speed;
     DeltaX = (X != 0) ? ((Speed * AbsX) / AbsY) : 0;
     if (X < 0) {
       DeltaX = -DeltaX;
@@ -2968,8 +2970,8 @@ CalculateScrollDelta (
     ScrollDelta = 10;
   }
   
-  // Return with direction (Y positive = up)
-  return (Y > 0) ? ScrollDelta : -ScrollDelta;
+  // Return with direction (Y positive = scroll up = negative delta)
+  return (Y > 0) ? -ScrollDelta : ScrollDelta;
 }
 
 /**
@@ -4243,6 +4245,7 @@ USBKeyboardSimplePointerGetState (
   )
 {
   USB_KB_DEV  *UsbKeyboardDevice;
+  BOOLEAN     HasUpdate;
 
   if (State == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -4251,19 +4254,32 @@ USBKeyboardSimplePointerGetState (
   UsbKeyboardDevice = SIMPLE_POINTER_USB_KB_DEV_FROM_THIS (This);
 
   //
-  // Check if there's any movement
+  // Check if there's any update (movement OR button state)
+  // Note: We must report button state even when movement is zero
   //
-  if (UsbKeyboardDevice->SimplePointerState.RelativeMovementX == 0 &&
-      UsbKeyboardDevice->SimplePointerState.RelativeMovementY == 0 &&
-      UsbKeyboardDevice->SimplePointerState.RelativeMovementZ == 0) {
+  HasUpdate = (UsbKeyboardDevice->SimplePointerState.RelativeMovementX != 0) ||
+              (UsbKeyboardDevice->SimplePointerState.RelativeMovementY != 0) ||
+              (UsbKeyboardDevice->SimplePointerState.RelativeMovementZ != 0) ||
+              (UsbKeyboardDevice->SimplePointerState.LeftButton != FALSE) ||
+              (UsbKeyboardDevice->SimplePointerState.RightButton != FALSE);
+
+  if (!HasUpdate) {
     return EFI_NOT_READY;
   }
 
   //
-  // Return current state and clear it
+  // Return current state
   //
   CopyMem (State, &UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
-  ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  
+  //
+  // Clear ONLY the movement deltas, preserve button states
+  // Button states will be updated by trigger/button handlers when released
+  //
+  UsbKeyboardDevice->SimplePointerState.RelativeMovementX = 0;
+  UsbKeyboardDevice->SimplePointerState.RelativeMovementY = 0;
+  UsbKeyboardDevice->SimplePointerState.RelativeMovementZ = 0;
+  // DO NOT clear LeftButton and RightButton - they represent current state
 
   return EFI_SUCCESS;
 }
