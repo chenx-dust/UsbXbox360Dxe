@@ -9,9 +9,9 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include "KeyBoard.h"
 
-#define XBOX360_VENDOR_ID              0x045E
-#define XBOX360_PRODUCT_ID             0x028E
-
+//
+// Xbox 360 button bit definitions
+//
 #define XBOX360_BUTTON_DPAD_UP         BIT0
 #define XBOX360_BUTTON_DPAD_DOWN       BIT1
 #define XBOX360_BUTTON_DPAD_LEFT       BIT2
@@ -28,6 +28,92 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define XBOX360_BUTTON_X               BIT14
 #define XBOX360_BUTTON_Y               BIT15
 
+//
+// Xbox 360 compatible device structure
+//
+typedef struct {
+  UINT16    VendorId;
+  UINT16    ProductId;
+  CHAR16    *Description;
+} XBOX360_COMPATIBLE_DEVICE;
+
+//
+// Known Xbox 360 protocol compatible devices
+// All devices verified against Linux kernel xpad driver (XTYPE_XBOX360)
+// Reference: linux/drivers/input/joystick/xpad.c
+//
+STATIC CONST XBOX360_COMPATIBLE_DEVICE  mXbox360CompatibleDevices[] = {
+  //
+  // Microsoft Official Controllers
+  //
+  { 0x045E, 0x028E, L"Xbox 360 Wired Controller" },
+  { 0x045E, 0x028F, L"Xbox 360 Wired Controller v2" },
+  { 0x045E, 0x0719, L"Xbox 360 Wireless Receiver" },
+  
+  //
+  // Handheld Gaming Devices (High Priority)
+  //
+  { 0x0079, 0x18D4, L"GPD Win 2 Controller" },
+  { 0x2563, 0x058D, L"OneXPlayer Gamepad" },
+  { 0x17EF, 0x6182, L"Lenovo Legion Go" },
+  { 0x1A86, 0xE310, L"Legion Go S" },
+  { 0x0DB0, 0x1901, L"MSI Claw" },
+  { 0x2993, 0x2001, L"TECNO Pocket Go" },
+  { 0x1EE9, 0x1590, L"ZOTAC Gaming Zone" },
+  
+  //
+  // 8BitDo Controllers
+  //
+  { 0x2DC8, 0x3106, L"8BitDo Ultimate / Pro 2 Wired" },
+  { 0x2DC8, 0x3109, L"8BitDo Ultimate Wireless" },
+  { 0x2DC8, 0x310A, L"8BitDo Ultimate 2C Wireless" },
+  { 0x2DC8, 0x310B, L"8BitDo Ultimate 2 Wireless" },
+  { 0x2DC8, 0x6001, L"8BitDo SN30 Pro" },
+  
+  //
+  // Logitech
+  //
+  { 0x046D, 0xC21D, L"Logitech F310" },
+  { 0x046D, 0xC21E, L"Logitech F510" },
+  { 0x046D, 0xC21F, L"Logitech F710" },
+  { 0x046D, 0xC242, L"Logitech Chillstream" },
+  
+  //
+  // HyperX
+  //
+  { 0x03F0, 0x038D, L"HyperX Clutch (wired)" },
+  { 0x03F0, 0x048D, L"HyperX Clutch (wireless)" },
+  
+  //
+  // Other Popular Brands
+  //
+  { 0x1038, 0x1430, L"SteelSeries Stratus Duo" },
+  { 0x1038, 0x1431, L"SteelSeries Stratus Duo (alt)" },
+  { 0x2345, 0xE00B, L"Machenike G5 Pro" },
+  { 0x3537, 0x1004, L"GameSir T4 Kaleid" },
+  { 0x37D7, 0x2501, L"Flydigi Apex 5" },
+  { 0x413D, 0x2104, L"Black Shark Green Ghost" },
+  { 0x1949, 0x041A, L"Amazon Game Controller" },
+  
+  //
+  // Razer
+  //
+  { 0x1689, 0xFD00, L"Razer Onza Tournament" },
+  { 0x1689, 0xFD01, L"Razer Onza Classic" },
+  { 0x1689, 0xFE00, L"Razer Sabertooth" },
+  
+  //
+  // Add more devices here as needed
+  // Format: { VID, PID, L"Description" },
+  //
+};
+
+#define XBOX360_COMPATIBLE_DEVICE_COUNT \
+  (sizeof(mXbox360CompatibleDevices) / sizeof(XBOX360_COMPATIBLE_DEVICE))
+
+//
+// Button to keyboard mapping structure
+//
 typedef struct {
   UINT16    ButtonMask;
   UINT8     UsbKeyCode;
@@ -414,12 +500,15 @@ InstallDefaultKeyboardLayout (
 }
 
 /**
-  Uses USB I/O to check whether the device is a USB keyboard device.
+  Uses USB I/O to check whether the device is an Xbox 360 compatible controller.
+
+  This function checks the device's VID/PID against a list of known Xbox 360
+  protocol compatible devices verified in the Linux kernel xpad driver.
 
   @param  UsbIo    Pointer to a USB I/O protocol instance.
 
-  @retval TRUE     Device is a USB keyboard device.
-  @retval FALSE    Device is a not USB keyboard device.
+  @retval TRUE     Device is an Xbox 360 compatible controller.
+  @retval FALSE    Device is not compatible.
 
 **/
 BOOLEAN
@@ -429,16 +518,29 @@ IsUSBKeyboard (
 {
   EFI_STATUS                  Status;
   EFI_USB_DEVICE_DESCRIPTOR   DeviceDescriptor;
+  UINTN                       Index;
 
   Status = UsbIo->UsbGetDeviceDescriptor (UsbIo, &DeviceDescriptor);
   if (EFI_ERROR (Status)) {
     return FALSE;
   }
 
-  if ((DeviceDescriptor.IdVendor == XBOX360_VENDOR_ID) &&
-      (DeviceDescriptor.IdProduct == XBOX360_PRODUCT_ID))
-  {
-    return TRUE;
+  //
+  // Check against known Xbox 360 compatible devices list
+  //
+  for (Index = 0; Index < XBOX360_COMPATIBLE_DEVICE_COUNT; Index++) {
+    if ((DeviceDescriptor.IdVendor == mXbox360CompatibleDevices[Index].VendorId) &&
+        (DeviceDescriptor.IdProduct == mXbox360CompatibleDevices[Index].ProductId))
+    {
+      DEBUG ((
+        DEBUG_INFO,
+        "Xbox360Dxe: Found compatible device: %s (VID:0x%04X PID:0x%04X)\n",
+        mXbox360CompatibleDevices[Index].Description,
+        DeviceDescriptor.IdVendor,
+        DeviceDescriptor.IdProduct
+        ));
+      return TRUE;
+    }
   }
 
   return FALSE;
