@@ -2916,20 +2916,6 @@ CalculateMouseMovement (
     }
   }
   
-  //
-  // Ensure at least 1 pixel movement to maintain polling rate
-  // This prevents choppy movement when stick is just outside deadzone
-  //
-  if (DeltaX == 0 && DeltaY == 0 && Magnitude >= Config->Deadzone) {
-    // Stick is outside deadzone but calculated movement is zero
-    // Set minimum movement in primary direction to maintain smooth polling
-    if (AbsX > AbsY) {
-      DeltaX = (X > 0) ? 1 : -1;
-    } else {
-      DeltaY = (Y > 0) ? -1 : 1;
-    }
-  }
-  
   *OutDeltaX = DeltaX;
   *OutDeltaY = DeltaY;
 }
@@ -3235,10 +3221,9 @@ ProcessStickChanges (
     }
     
     // Update mouse state if pointer protocol is installed
-    // Accumulate movement deltas to prevent losing updates between GetState calls
     if (Device->SimplePointerInstalled) {
-      Device->SimplePointerState.RelativeMovementX += DeltaX;
-      Device->SimplePointerState.RelativeMovementY += DeltaY;
+      Device->SimplePointerState.RelativeMovementX = DeltaX;
+      Device->SimplePointerState.RelativeMovementY = DeltaY;
     }
   }
   
@@ -3259,9 +3244,8 @@ ProcessStickChanges (
       );
     }
     
-    // Accumulate scroll delta to prevent losing updates
     if (Device->SimplePointerInstalled) {
-      Device->SimplePointerState.RelativeMovementZ += ScrollDelta;
+      Device->SimplePointerState.RelativeMovementZ = ScrollDelta;
     }
   }
   
