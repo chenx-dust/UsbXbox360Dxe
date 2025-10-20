@@ -10,8 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ubuntu:22.04
+    # container:
+    #   image: ubuntu:22.04
     defaults:
       run:
         shell: bash
@@ -22,8 +22,8 @@ jobs:
       
     - name: Install dependencies
       run: |
-        apt-get update
-        apt-get install -y build-essential uuid-dev iasl git nasm python3
+        sudo apt-get update
+        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3
         
     - name: Clone EDK2
       run: |
@@ -37,7 +37,7 @@ jobs:
         export WORKSPACE=$PWD
         export PACKAGES_PATH=$WORKSPACE
         # Create python symlink for compatibility
-        ln -sf /usr/bin/python3 /usr/bin/python
+        sudo ln -sf /usr/bin/python3 /usr/bin/python
         make -C BaseTools -j$(nproc)
         source edksetup.sh
         
