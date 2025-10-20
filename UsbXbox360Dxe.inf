@@ -63,6 +63,7 @@
   gEfiDevicePathProtocolGuid                    ## TO_START
   gEfiSimpleTextInProtocolGuid                  ## BY_START
   gEfiSimpleTextInputExProtocolGuid             ## BY_START
+  gEfiSimplePointerProtocolGuid                 ## BY_START
   gEfiSimpleFileSystemProtocolGuid              ## SOMETIMES_CONSUMES
   #
   # If HII Database Protocol exists, then keyboard layout from HII database is used.

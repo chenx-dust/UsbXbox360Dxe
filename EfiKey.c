@@ -373,6 +373,24 @@ USBKeyboardDriverBindingStart (
   }
 
   //
+  // Attempt to install Simple Pointer Protocol for mouse support
+  // This is optional - if it fails, we still have keyboard functionality
+  //
+  Status = gBS->InstallMultipleProtocolInterfaces (
+                  &Controller,
+                  &gEfiSimplePointerProtocolGuid,
+                  &UsbKeyboardDevice->SimplePointer,
+                  NULL
+                  );
+  if (!EFI_ERROR (Status)) {
+    UsbKeyboardDevice->SimplePointerInstalled = TRUE;
+    DEBUG ((DEBUG_INFO, "Xbox360: SimplePointer protocol installed successfully\n"));
+  } else {
+    UsbKeyboardDevice->SimplePointerInstalled = FALSE;
+    DEBUG ((DEBUG_WARN, "Xbox360: SimplePointer protocol installation failed: %r (continuing without mouse support)\n", Status));
+  }
+
+  //
   // Submit Asynchronous Interrupt Transfer to manage this device.
   //
   EndpointAddr    = UsbKeyboardDevice->IntEndpointDescriptor.EndpointAddress;
@@ -554,6 +572,19 @@ USBKeyboardDriverBindingStop (
                   &UsbKeyboardDevice->SimpleInputEx,
                   NULL
                   );
+
+  //
+  // Uninstall Simple Pointer Protocol if it was installed
+  //
+  if (UsbKeyboardDevice->SimplePointerInstalled) {
+    gBS->UninstallMultipleProtocolInterfaces (
+           Controller,
+           &gEfiSimplePointerProtocolGuid,
+           &UsbKeyboardDevice->SimplePointer,
+           NULL
+           );
+  }
+
   //
   // Free all resources.
   //

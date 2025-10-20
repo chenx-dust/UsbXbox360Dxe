@@ -14,6 +14,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include <Protocol/SimpleTextIn.h>
 #include <Protocol/SimpleTextInEx.h>
+#include <Protocol/SimplePointer.h>
 #include <Protocol/HiiDatabase.h>
 #include <Protocol/UsbIo.h>
 #include <Protocol/DevicePath.h>
@@ -122,6 +123,10 @@ typedef struct {
   EFI_EVENT                            DelayedRecoveryEvent;
   EFI_SIMPLE_TEXT_INPUT_PROTOCOL       SimpleInput;
   EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL    SimpleInputEx;
+  EFI_SIMPLE_POINTER_PROTOCOL          SimplePointer;
+  EFI_SIMPLE_POINTER_MODE              SimplePointerMode;
+  EFI_SIMPLE_POINTER_STATE             SimplePointerState;
+  BOOLEAN                              SimplePointerInstalled;
   EFI_USB_IO_PROTOCOL                  *UsbIo;
 
   EFI_USB_INTERFACE_DESCRIPTOR         InterfaceDescriptor;
@@ -186,6 +191,8 @@ extern EFI_COMPONENT_NAME2_PROTOCOL  gUsbKeyboardComponentName2;
     CR(a, USB_KB_DEV, SimpleInput, USB_KB_DEV_SIGNATURE)
 #define TEXT_INPUT_EX_USB_KB_DEV_FROM_THIS(a) \
     CR(a, USB_KB_DEV, SimpleInputEx, USB_KB_DEV_SIGNATURE)
+#define SIMPLE_POINTER_USB_KB_DEV_FROM_THIS(a) \
+    CR(a, USB_KB_DEV, SimplePointer, USB_KB_DEV_SIGNATURE)
 
 //
 // According to Universal Serial Bus HID Usage Tables document ver 1.12,
@@ -633,6 +640,43 @@ EFIAPI
 KeyNotifyProcessHandler (
   IN  EFI_EVENT  Event,
   IN  VOID       *Context
+  );
+
+/**
+  Resets the pointer device hardware.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  ExtendedVerification  Indicates that the driver may perform a more exhaustive
+                                verification operation of the device during reset.
+
+  @retval EFI_SUCCESS           The device was reset.
+  @retval EFI_DEVICE_ERROR      The device is not functioning correctly and could not be reset.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerReset (
+  IN EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  IN BOOLEAN                      ExtendedVerification
+  );
+
+/**
+  Retrieves the current state of a pointer device.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  State                 A pointer to the state information on the pointer device.
+
+  @retval EFI_SUCCESS           The state of the pointer device was returned in State.
+  @retval EFI_NOT_READY         The state of the pointer device has not changed since the last call.
+  @retval EFI_DEVICE_ERROR      A device error occurred while attempting to retrieve the pointer
+                                device's current state.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerGetState (
+  IN  EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  OUT EFI_SIMPLE_POINTER_STATE     *State
   );
 
 #endif

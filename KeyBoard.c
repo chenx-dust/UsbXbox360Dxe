@@ -2605,6 +2605,28 @@ InitUSBKeyboard (
          &UsbKeyboardDevice->DelayedRecoveryEvent
          );
 
+  //
+  // Initialize SimplePointer protocol
+  //
+  UsbKeyboardDevice->SimplePointer.Reset     = USBKeyboardSimplePointerReset;
+  UsbKeyboardDevice->SimplePointer.GetState  = USBKeyboardSimplePointerGetState;
+  UsbKeyboardDevice->SimplePointer.Mode      = &UsbKeyboardDevice->SimplePointerMode;
+  
+  //
+  // Initialize pointer mode (relative movement, no button support)
+  //
+  UsbKeyboardDevice->SimplePointerMode.ResolutionX     = 1;
+  UsbKeyboardDevice->SimplePointerMode.ResolutionY     = 1;
+  UsbKeyboardDevice->SimplePointerMode.ResolutionZ     = 0;
+  UsbKeyboardDevice->SimplePointerMode.LeftButton      = FALSE;
+  UsbKeyboardDevice->SimplePointerMode.RightButton     = FALSE;
+  
+  //
+  // Initialize pointer state
+  //
+  ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  UsbKeyboardDevice->SimplePointerInstalled = FALSE;
+
   return EFI_SUCCESS;
 }
 
@@ -2656,6 +2678,166 @@ ProcessButtonChanges (
       IsPressed
       );
   }
+}
+
+/**
+  Apply response curve to normalized stick input (0.0 to 1.0).
+  
+  @param  Normalized  Input value (0.0 to 1.0)
+  @param  Curve       Curve type: 1=Linear, 2=Square, 3=S-curve
+  
+  @return Curved output value (0.0 to 1.0)
+**/
+STATIC
+INT32
+ApplyResponseCurve (
+  IN INT32  Normalized,  // Fixed-point: 0 to 10000 (represents 0.0 to 1.0)
+  IN UINT8  Curve
+  )
+{
+  INT32  Result;
+  
+  if (Normalized <= 0) {
+    return 0;
+  }
+  if (Normalized >= 10000) {
+    return 10000;
+  }
+  
+  switch (Curve) {
+    case 1:  // Linear
+      Result = Normalized;
+      break;
+      
+    case 2:  // Square (default, recommended)
+      // Result = Normalized^2
+      Result = (Normalized * Normalized) / 10000;
+      break;
+      
+    case 3:  // S-curve (smoothstep: 3t^2 - 2t^3)
+      // Smoothstep function for smooth acceleration
+      // Formula: t * t * (3 - 2 * t)
+      {
+        INT32  T2;  // t^2
+        INT32  T3;  // t^3
+        
+        T2 = (Normalized * Normalized) / 10000;
+        T3 = (T2 * Normalized) / 10000;
+        
+        // Result = 3*t^2 - 2*t^3
+        Result = (3 * T2 - 2 * T3);
+      }
+      break;
+      
+    default:
+      Result = Normalized;
+      break;
+  }
+  
+  // Clamp to valid range
+  if (Result < 0) {
+    Result = 0;
+  }
+  if (Result > 10000) {
+    Result = 10000;
+  }
+  
+  return Result;
+}
+
+/**
+  Calculate mouse movement from analog stick input.
+  
+  @param  X           Stick X-axis value (-32768 ~ 32767)
+  @param  Y           Stick Y-axis value (-32768 ~ 32767)
+  @param  Config      Stick configuration
+  @param  OutDeltaX   Output: Mouse X delta (pixels)
+  @param  OutDeltaY   Output: Mouse Y delta (pixels)
+**/
+STATIC
+VOID
+CalculateMouseMovement (
+  IN  INT16         X,
+  IN  INT16         Y,
+  IN  STICK_CONFIG  *Config,
+  OUT INT32         *OutDeltaX,
+  OUT INT32         *OutDeltaY
+  )
+{
+  INT32  AbsX;
+  INT32  AbsY;
+  INT32  Magnitude;
+  INT32  Normalized;
+  INT32  Curved;
+  INT32  Speed;
+  INT32  DeltaX;
+  INT32  DeltaY;
+  
+  if (Config == NULL || OutDeltaX == NULL || OutDeltaY == NULL) {
+    return;
+  }
+  
+  *OutDeltaX = 0;
+  *OutDeltaY = 0;
+  
+  // Calculate magnitude
+  AbsX = (X < 0) ? -X : X;
+  AbsY = (Y < 0) ? -Y : Y;
+  Magnitude = (AbsX > AbsY) ? AbsX : AbsY;
+  
+  // Check deadzone
+  if (Magnitude < Config->Deadzone) {
+    return;
+  }
+  
+  // Normalize to 0-10000 (0.0 to 1.0 in fixed-point)
+  // Apply saturation
+  if (Magnitude > Config->Saturation) {
+    Magnitude = Config->Saturation;
+  }
+  
+  // Normalized = (Magnitude - Deadzone) / (Saturation - Deadzone)
+  Normalized = ((Magnitude - Config->Deadzone) * 10000) / 
+               (Config->Saturation - Config->Deadzone);
+  
+  if (Normalized < 0) {
+    Normalized = 0;
+  }
+  if (Normalized > 10000) {
+    Normalized = 10000;
+  }
+  
+  // Apply response curve
+  Curved = ApplyResponseCurve(Normalized, Config->MouseCurve);
+  
+  // Calculate speed: Curved * Sensitivity * MaxSpeed
+  // Sensitivity: 1-100, MaxSpeed: pixels per poll
+  Speed = (Curved * Config->MouseSensitivity * Config->MouseMaxSpeed) / 
+          (10000 * 100);
+  
+  if (Speed < 1 && Curved > 0) {
+    Speed = 1;  // Minimum movement
+  }
+  
+  // Calculate directional movement
+  if (AbsX > AbsY) {
+    // Horizontal primary
+    DeltaX = (X > 0) ? Speed : -Speed;
+    DeltaY = (Y != 0) ? ((Speed * AbsY) / AbsX) : 0;
+    if (Y < 0) {
+      DeltaY = -DeltaY;
+    }
+  } else {
+    // Vertical primary
+    DeltaY = (Y > 0) ? Speed : -Speed;
+    DeltaX = (X != 0) ? ((Speed * AbsX) / AbsY) : 0;
+    if (X < 0) {
+      DeltaX = -DeltaX;
+    }
+  }
+  
+  *OutDeltaX = DeltaX;
+  *OutDeltaY = DeltaY;
 }
 
 /**
@@ -2876,7 +3058,38 @@ ProcessStickChanges (
     }
   }
   
-  // TODO: Mouse mode processing will be added in Phase 3
+  // Process mouse mode for either stick
+  if (mGlobalConfig.LeftStick.Mode == STICK_MODE_MOUSE || 
+      mGlobalConfig.RightStick.Mode == STICK_MODE_MOUSE) {
+    INT32  DeltaX = 0;
+    INT32  DeltaY = 0;
+    
+    // Calculate movement from active stick (left has priority)
+    if (mGlobalConfig.LeftStick.Mode == STICK_MODE_MOUSE) {
+      CalculateMouseMovement(
+        Device->XboxState.LeftStickX,
+        Device->XboxState.LeftStickY,
+        &mGlobalConfig.LeftStick,
+        &DeltaX,
+        &DeltaY
+      );
+    } else if (mGlobalConfig.RightStick.Mode == STICK_MODE_MOUSE) {
+      CalculateMouseMovement(
+        Device->XboxState.RightStickX,
+        Device->XboxState.RightStickY,
+        &mGlobalConfig.RightStick,
+        &DeltaX,
+        &DeltaY
+      );
+    }
+    
+    // Update mouse state if pointer protocol is installed
+    if (Device->SimplePointerInstalled && (DeltaX != 0 || DeltaY != 0)) {
+      Device->SimplePointerState.RelativeMovementX = DeltaX;
+      Device->SimplePointerState.RelativeMovementY = DeltaY;
+      Device->SimplePointerState.RelativeMovementZ = 0;
+    }
+  }
 }
 
 /**
@@ -3801,4 +4014,80 @@ USBKeyboardRecoveryHandler (
            KeyboardHandler,
            UsbKeyboardDevice
            );
+}
+
+/**
+  Resets the pointer device hardware.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  ExtendedVerification  Indicates that the driver may perform a more exhaustive
+                                verification operation of the device during reset.
+
+  @retval EFI_SUCCESS           The device was reset.
+  @retval EFI_DEVICE_ERROR      The device is not functioning correctly and could not be reset.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerReset (
+  IN EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  IN BOOLEAN                      ExtendedVerification
+  )
+{
+  USB_KB_DEV  *UsbKeyboardDevice;
+
+  UsbKeyboardDevice = SIMPLE_POINTER_USB_KB_DEV_FROM_THIS (This);
+
+  //
+  // Reset pointer state
+  //
+  ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Retrieves the current state of a pointer device.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  State                 A pointer to the state information on the pointer device.
+
+  @retval EFI_SUCCESS           The state of the pointer device was returned in State.
+  @retval EFI_NOT_READY         The state of the pointer device has not changed since the last call.
+  @retval EFI_DEVICE_ERROR      A device error occurred while attempting to retrieve the pointer
+                                device's current state.
+  @retval EFI_INVALID_PARAMETER State is NULL.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerGetState (
+  IN  EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  OUT EFI_SIMPLE_POINTER_STATE     *State
+  )
+{
+  USB_KB_DEV  *UsbKeyboardDevice;
+
+  if (State == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  UsbKeyboardDevice = SIMPLE_POINTER_USB_KB_DEV_FROM_THIS (This);
+
+  //
+  // Check if there's any movement
+  //
+  if (UsbKeyboardDevice->SimplePointerState.RelativeMovementX == 0 &&
+      UsbKeyboardDevice->SimplePointerState.RelativeMovementY == 0 &&
+      UsbKeyboardDevice->SimplePointerState.RelativeMovementZ == 0) {
+    return EFI_NOT_READY;
+  }
+
+  //
+  // Return current state and clear it
+  //
+  CopyMem (State, &UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+
+  return EFI_SUCCESS;
 }
