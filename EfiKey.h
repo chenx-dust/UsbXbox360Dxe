@@ -19,6 +19,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Protocol/UsbIo.h>
 #include <Protocol/DevicePath.h>
 #include <Protocol/SimpleFileSystem.h>
+#include <Protocol/LoadedImage.h>
 
 #include <Guid/HiiKeyBoardLayout.h>
 #include <Guid/UsbKeyBoardLayout.h>
