@@ -56,12 +56,14 @@
   gEfiHiiKeyBoardLayoutGuid                     ## SOMETIMES_CONSUMES ## Event
   gUsbKeyboardLayoutPackageGuid                 ## SOMETIMES_CONSUMES ## HII
   gUsbKeyboardLayoutKeyGuid                     ## SOMETIMES_PRODUCES ## UNDEFINED
+  gEfiFileInfoGuid                              ## SOMETIMES_CONSUMES ## GUID
 
 [Protocols]
   gEfiUsbIoProtocolGuid                         ## TO_START
   gEfiDevicePathProtocolGuid                    ## TO_START
   gEfiSimpleTextInProtocolGuid                  ## BY_START
   gEfiSimpleTextInputExProtocolGuid             ## BY_START
+  gEfiSimpleFileSystemProtocolGuid              ## SOMETIMES_CONSUMES
   #
   # If HII Database Protocol exists, then keyboard layout from HII database is used.
   # Otherwise, USB keyboard module tries to use its carried default layout.

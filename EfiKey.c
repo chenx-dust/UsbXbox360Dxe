@@ -576,6 +576,11 @@ USBKeyboardDriverBindingStop (
   DestroyQueue (&UsbKeyboardDevice->EfiKeyQueue);
   DestroyQueue (&UsbKeyboardDevice->EfiKeyQueueForNotify);
 
+  //
+  // Cleanup dynamic device list
+  //
+  CleanupDeviceList ();
+
   FreePool (UsbKeyboardDevice);
 
   return Status;

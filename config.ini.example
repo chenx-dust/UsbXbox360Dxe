@@ -1,0 +1,83 @@
+# Xbox 360 Controller Driver Configuration
+# =========================================
+# Copy this file to \EFI\Xbox360\config.ini on your ESP partition and edit as needed.
+# The driver will automatically create a default config on first boot if none exists.
+#
+# Version History:
+#   1.0 - Initial release with basic settings
+
+Version=1.0
+
+# ==================
+# Analog Stick Settings
+# ==================
+# Deadzone: 0-32767 (default: 8000)
+# Values below this threshold are ignored to prevent drift
+Deadzone=8000
+
+# ==================
+# Trigger Settings
+# ==================
+# TriggerThreshold: 0-255, trigger activation point (default: 128)
+# Triggers will activate when their value exceeds this threshold
+TriggerThreshold=128
+
+# Trigger to key mappings (USB HID scan codes in hexadecimal)
+# Set to 0xFF to disable a trigger
+LeftTrigger=0x4C          # Delete key
+RightTrigger=0x4D         # End key
+
+# ==================
+# Custom Device Support
+# ==================
+# The driver includes 40+ built-in Xbox 360 compatible devices.
+# Add your own devices here if they're not recognized.
+#
+# How to find VID/PID:
+#   Linux:   lsusb
+#   Windows: Device Manager -> Properties -> Hardware Ids
+#   macOS:   System Information -> USB
+#
+# Format: DeviceN=VID:PID:Description
+# VID/PID can be hex (0x1234) or without prefix (1234)
+#
+# Examples:
+#   Device1=0x1234:0x5678:My Custom Xbox Controller
+#   Device2=ABCD:EF00:Another Controller (0x prefix optional)
+#   Device3=0x9999:0x8888:Handheld Device Built-in Gamepad
+
+[CustomDevices]
+# Uncomment and edit to add your devices:
+# Device1=0x1234:0x5678:My Custom Controller
+# Device2=
+# Device3=
+
+# ==================
+# USB HID Scan Code Reference
+# ==================
+# Common scan codes for button mappings:
+#   0x28 = Enter          0x29 = Escape        0x2A = Backspace
+#   0x2B = Tab            0x2C = Space         0x2D = Minus
+#   0x4A = Home           0x4B = Page Up       0x4C = Delete
+#   0x4D = End            0x4E = Page Down     0x4F = Right Arrow
+#   0x50 = Left Arrow     0x51 = Down Arrow    0x52 = Up Arrow
+#   0xE0 = Left Control   0xE1 = Left Shift    0xE2 = Left Alt
+#   0xE3 = Left GUI       0xE4 = Right Control 0xE5 = Right Shift
+#   0xE6 = Right Alt      0xE7 = Right GUI
+#   0xFF = Disabled
+#
+# Full USB HID specification:
+# https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf
+
+# ==================
+# Built-in Supported Devices
+# ==================
+# Microsoft: Xbox 360 Wired/Wireless controllers
+# Handhelds: GPD Win 2, OneXPlayer, Legion Go/Go S, MSI Claw, etc.
+# 8BitDo: Ultimate, Pro 2, SN30 Pro
+# Logitech: F310, F510, F710
+# HyperX: Clutch (wired/wireless)
+# And many more... See KeyBoard.c for full list
+
+# End of configuration
+

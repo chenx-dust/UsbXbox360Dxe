@@ -12,6 +12,37 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include "EfiKey.h"
 
+//
+// Xbox 360 Configuration Constants
+//
+#define XBOX360_CONFIG_VERSION_1_0      0x0100  // Initial version
+#define XBOX360_CONFIG_VERSION_CURRENT  XBOX360_CONFIG_VERSION_1_0
+#define MAX_CUSTOM_DEVICES              32      // Maximum custom devices in config
+
+//
+// Xbox 360 compatible device structure
+//
+typedef struct {
+  UINT16    VendorId;
+  UINT16    ProductId;
+  CHAR16    *Description;
+} XBOX360_COMPATIBLE_DEVICE;
+
+//
+// Xbox 360 Configuration Structure
+//
+typedef struct {
+  UINT16                       Version;              // Config format version
+  UINT16                       StickDeadzone;        // Analog stick deadzone (0-32767)
+  UINT8                        TriggerThreshold;     // Trigger activation threshold (0-255)
+  UINT8                        LeftTriggerKey;       // Left trigger key mapping
+  UINT8                        RightTriggerKey;      // Right trigger key mapping
+  UINT8                        ButtonMap[16];        // Button to key mappings
+  UINTN                        CustomDeviceCount;    // Number of custom devices
+  XBOX360_COMPATIBLE_DEVICE    CustomDevices[MAX_CUSTOM_DEVICES]; // Custom device list
+  UINT8                        Reserved[32];         // Reserved for future expansion
+} XBOX360_CONFIG;
+
 #define USB_KEYBOARD_KEY_COUNT  105
 
 #define USB_KEYBOARD_LANGUAGE_STR_LEN     5         // RFC4646 Language Code: "en-US"
@@ -71,6 +102,15 @@ IsUSBKeyboard (
 EFI_STATUS
 InitUSBKeyboard (
   IN OUT USB_KB_DEV  *UsbKeyboardDevice
+  );
+
+/**
+  Cleanup device list when driver unloads.
+  Frees allocated memory for dynamic device list.
+**/
+VOID
+CleanupDeviceList (
+  VOID
   );
 
 /**

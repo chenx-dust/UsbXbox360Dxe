@@ -29,20 +29,11 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define XBOX360_BUTTON_Y               BIT15
 
 //
-// Xbox 360 compatible device structure
-//
-typedef struct {
-  UINT16    VendorId;
-  UINT16    ProductId;
-  CHAR16    *Description;
-} XBOX360_COMPATIBLE_DEVICE;
-
-//
 // Known Xbox 360 protocol compatible devices
 // All devices verified against Linux kernel xpad driver (XTYPE_XBOX360)
 // Reference: linux/drivers/input/joystick/xpad.c
 //
-STATIC CONST XBOX360_COMPATIBLE_DEVICE  mXbox360CompatibleDevices[] = {
+STATIC CONST XBOX360_COMPATIBLE_DEVICE  mXbox360BuiltinDevices[] = {
   //
   // Microsoft Official Controllers
   //
@@ -108,8 +99,20 @@ STATIC CONST XBOX360_COMPATIBLE_DEVICE  mXbox360CompatibleDevices[] = {
   //
 };
 
-#define XBOX360_COMPATIBLE_DEVICE_COUNT \
-  (sizeof(mXbox360CompatibleDevices) / sizeof(XBOX360_COMPATIBLE_DEVICE))
+#define XBOX360_BUILTIN_DEVICE_COUNT \
+  (sizeof(mXbox360BuiltinDevices) / sizeof(XBOX360_COMPATIBLE_DEVICE))
+
+//
+// Dynamic device list (built-in + custom from config)
+//
+STATIC XBOX360_COMPATIBLE_DEVICE  *mXbox360DeviceList = NULL;
+STATIC UINTN                       mXbox360DeviceCount = 0;
+STATIC BOOLEAN                     mDeviceListInitialized = FALSE;
+
+//
+// Global configuration
+//
+STATIC XBOX360_CONFIG  mGlobalConfig;
 
 //
 // Button to keyboard mapping structure
@@ -151,6 +154,92 @@ ProcessButtonChanges (
   IN USB_KB_DEV  *UsbKeyboardDevice,
   IN UINT16      OldButtons,
   IN UINT16      NewButtons
+  );
+
+//
+// Configuration file functions (forward declarations)
+//
+STATIC
+VOID
+SetDefaultConfig (
+  OUT XBOX360_CONFIG  *Config
+  );
+
+STATIC
+VOID
+TrimString (
+  IN OUT CHAR8  *Str
+  );
+
+STATIC
+BOOLEAN
+ParseBool (
+  IN CHAR8  *Value
+  );
+
+STATIC
+BOOLEAN
+ParseDeviceString (
+  IN  CHAR8                      *DeviceStr,
+  OUT XBOX360_COMPATIBLE_DEVICE  *Device
+  );
+
+STATIC
+VOID
+ParseIniConfig (
+  IN  CHAR8           *IniData,
+  OUT XBOX360_CONFIG  *Config
+  );
+
+STATIC
+UINT16
+ParseConfigVersion (
+  IN CHAR8  *ConfigData
+  );
+
+STATIC
+VOID
+ValidateAndSanitizeConfig (
+  IN OUT XBOX360_CONFIG  *Config
+  );
+
+STATIC
+EFI_STATUS
+TryReadConfigFromVolume (
+  IN  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem,
+  OUT CHAR8                            **ConfigData,
+  OUT UINTN                            *ConfigSize
+  );
+
+STATIC
+EFI_STATUS
+FindAndReadConfig (
+  OUT CHAR8  **ConfigData,
+  OUT UINTN  *ConfigSize
+  );
+
+STATIC
+CHAR8 *
+GenerateConfigTemplate (
+  VOID
+  );
+
+STATIC
+EFI_STATUS
+TryWriteConfigToVolume (
+  IN EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem
+  );
+
+STATIC
+EFI_STATUS
+GenerateDefaultConfigFile (
+  VOID
+  );
+
+STATIC
+EFI_STATUS
+LoadConfigWithMigration (
+  OUT XBOX360_CONFIG  *Config
   );
 
 USB_KEYBOARD_LAYOUT_PACK_BIN  mUsbKeyboardLayoutBin = {
@@ -499,6 +588,953 @@ InstallDefaultKeyboardLayout (
   return Status;
 }
 
+//
+// =============================================================================
+// Configuration File Support Functions
+// =============================================================================
+//
+
+/**
+  Trim leading and trailing whitespace from a string.
+
+  @param  Str  String to trim (modified in place).
+**/
+STATIC
+VOID
+TrimString (
+  IN OUT CHAR8  *Str
+  )
+{
+  CHAR8  *End;
+
+  if (Str == NULL || *Str == '\0') {
+    return;
+  }
+
+  // Trim leading whitespace
+  while (*Str == ' ' || *Str == '\t' || *Str == '\r' || *Str == '\n') {
+    Str++;
+  }
+
+  if (*Str == '\0') {
+    return;
+  }
+
+  // Trim trailing whitespace
+  End = Str + AsciiStrLen(Str) - 1;
+  while (End > Str && (*End == ' ' || *End == '\t' || *End == '\r' || *End == '\n')) {
+    *End = '\0';
+    End--;
+  }
+}
+
+/**
+  Parse a boolean value from a string.
+
+  @param  Value  String to parse (true/false/yes/no/1/0).
+
+  @retval TRUE   Value is true.
+  @retval FALSE  Value is false or unrecognized.
+**/
+STATIC
+BOOLEAN
+ParseBool (
+  IN CHAR8  *Value
+  )
+{
+  if (Value == NULL) {
+    return FALSE;
+  }
+
+  if ((AsciiStrCmp(Value, "true") == 0) ||
+      (AsciiStrCmp(Value, "TRUE") == 0) ||
+      (AsciiStrCmp(Value, "yes") == 0) ||
+      (AsciiStrCmp(Value, "YES") == 0) ||
+      (AsciiStrCmp(Value, "1") == 0)) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/**
+  Parse device string in format: VID:PID:Description
+  VID and PID can be hex (0x1234 or 1234).
+
+  @param  DeviceStr  String to parse (e.g., "0x1234:0x5678:My Controller").
+  @param  Device     Output device structure.
+
+  @retval TRUE   Successfully parsed.
+  @retval FALSE  Parse error.
+**/
+STATIC
+BOOLEAN
+ParseDeviceString (
+  IN  CHAR8                      *DeviceStr,
+  OUT XBOX360_COMPATIBLE_DEVICE  *Device
+  )
+{
+  CHAR8  *VidStr;
+  CHAR8  *PidStr;
+  CHAR8  *DescStr;
+  CHAR8  *Colon1;
+  CHAR8  *Colon2;
+  UINTN  DescLen;
+  UINTN  i;
+
+  if (DeviceStr == NULL || Device == NULL) {
+    return FALSE;
+  }
+
+  // Find first colon
+  Colon1 = AsciiStrStr(DeviceStr, ":");
+  if (Colon1 == NULL) {
+    return FALSE;
+  }
+  *Colon1 = '\0';
+
+  // Find second colon
+  Colon2 = AsciiStrStr(Colon1 + 1, ":");
+  if (Colon2 == NULL) {
+    return FALSE;
+  }
+  *Colon2 = '\0';
+
+  VidStr = DeviceStr;
+  PidStr = Colon1 + 1;
+  DescStr = Colon2 + 1;
+
+  // Trim strings
+  TrimString(VidStr);
+  TrimString(PidStr);
+  TrimString(DescStr);
+
+  // Parse VID (support both 0x1234 and 1234 format)
+  if ((AsciiStrnCmp(VidStr, "0x", 2) == 0) || (AsciiStrnCmp(VidStr, "0X", 2) == 0)) {
+    Device->VendorId = (UINT16)AsciiStrHexToUintn(VidStr + 2);
+  } else {
+    Device->VendorId = (UINT16)AsciiStrHexToUintn(VidStr);
+  }
+
+  // Parse PID
+  if ((AsciiStrnCmp(PidStr, "0x", 2) == 0) || (AsciiStrnCmp(PidStr, "0X", 2) == 0)) {
+    Device->ProductId = (UINT16)AsciiStrHexToUintn(PidStr + 2);
+  } else {
+    Device->ProductId = (UINT16)AsciiStrHexToUintn(PidStr);
+  }
+
+  // Convert description from ASCII to Unicode
+  DescLen = AsciiStrLen(DescStr);
+  if (DescLen > 63) {
+    DescLen = 63;  // Limit length
+  }
+
+  // Allocate memory for description
+  Device->Description = AllocateZeroPool((DescLen + 1) * sizeof(CHAR16));
+  if (Device->Description == NULL) {
+    return FALSE;
+  }
+
+  for (i = 0; i < DescLen; i++) {
+    Device->Description[i] = (CHAR16)DescStr[i];
+  }
+  Device->Description[DescLen] = L'\0';
+
+  // Validate VID/PID (must not be 0x0000)
+  if ((Device->VendorId == 0) || (Device->ProductId == 0)) {
+    if (Device->Description != NULL) {
+      FreePool(Device->Description);
+      Device->Description = NULL;
+    }
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
+  Set default configuration values.
+
+  @param  Config  Pointer to configuration structure to initialize.
+**/
+STATIC
+VOID
+SetDefaultConfig (
+  OUT XBOX360_CONFIG  *Config
+  )
+{
+  UINTN  i;
+
+  if (Config == NULL) {
+    return;
+  }
+
+  ZeroMem(Config, sizeof(XBOX360_CONFIG));
+
+  Config->Version = XBOX360_CONFIG_VERSION_CURRENT;
+  Config->StickDeadzone = 8000;
+  Config->TriggerThreshold = 128;
+  Config->LeftTriggerKey = 0x4C;   // Delete
+  Config->RightTriggerKey = 0x4D;  // End
+
+  // Default button mappings (from existing mXbox360ButtonMap)
+  Config->ButtonMap[0] = 0x52;   // DPAD_UP -> Up Arrow
+  Config->ButtonMap[1] = 0x51;   // DPAD_DOWN -> Down Arrow
+  Config->ButtonMap[2] = 0x50;   // DPAD_LEFT -> Left Arrow
+  Config->ButtonMap[3] = 0x4F;   // DPAD_RIGHT -> Right Arrow
+  Config->ButtonMap[4] = 0x2C;   // START -> Space
+  Config->ButtonMap[5] = 0x2B;   // BACK -> Tab
+  Config->ButtonMap[6] = 0xE0;   // LEFT_THUMB -> Left Control
+  Config->ButtonMap[7] = 0xE2;   // RIGHT_THUMB -> Left Alt
+  Config->ButtonMap[8] = 0x4B;   // LEFT_SHOULDER -> Page Up
+  Config->ButtonMap[9] = 0x4E;   // RIGHT_SHOULDER -> Page Down
+  Config->ButtonMap[10] = 0xE1;  // GUIDE -> Left Shift
+  Config->ButtonMap[11] = 0xFF;  // Reserved
+  Config->ButtonMap[12] = 0x28;  // A -> Enter
+  Config->ButtonMap[13] = 0x29;  // B -> Escape
+  Config->ButtonMap[14] = 0x2A;  // X -> Backspace
+  Config->ButtonMap[15] = 0x2B;  // Y -> Tab
+
+  Config->CustomDeviceCount = 0;
+}
+
+/**
+  Parse version from config file.
+  Format: Version=1.0 or Version=0x0100
+
+  @param  ConfigData  Configuration file content.
+
+  @retval Version number, or 0 if not found.
+**/
+STATIC
+UINT16
+ParseConfigVersion (
+  IN CHAR8  *ConfigData
+  )
+{
+  CHAR8   *VersionLine;
+  UINT16  Major;
+  UINT16  Minor;
+  CHAR8   *Dot;
+
+  if (ConfigData == NULL) {
+    return 0;
+  }
+
+  // Look for "Version=" line
+  VersionLine = AsciiStrStr(ConfigData, "Version=");
+  if (VersionLine == NULL) {
+    return 0;
+  }
+
+  VersionLine += 8; // Skip "Version="
+
+  // Trim leading whitespace
+  while (*VersionLine == ' ' || *VersionLine == '\t') {
+    VersionLine++;
+  }
+
+  // Support hex format (0x0100)
+  if ((VersionLine[0] == '0') && ((VersionLine[1] == 'x') || (VersionLine[1] == 'X'))) {
+    return (UINT16)AsciiStrHexToUintn(VersionLine);
+  }
+
+  // Parse decimal "major.minor" format
+  Major = (UINT16)AsciiStrDecimalToUintn(VersionLine);
+  Dot = AsciiStrStr(VersionLine, ".");
+  Minor = 0;
+  if (Dot != NULL) {
+    Minor = (UINT16)AsciiStrDecimalToUintn(Dot + 1);
+  }
+
+  return (Major << 8) | Minor;
+}
+
+/**
+  Parse INI configuration file.
+
+  @param  IniData  Configuration file content (will be modified).
+  @param  Config   Configuration structure to populate.
+**/
+STATIC
+VOID
+ParseIniConfig (
+  IN  CHAR8           *IniData,
+  OUT XBOX360_CONFIG  *Config
+  )
+{
+  CHAR8  *Line;
+  CHAR8  *NextLine;
+  CHAR8  *Key;
+  CHAR8  *Value;
+  CHAR8  *Equals;
+  UINTN  DeviceIndex;
+
+  if ((IniData == NULL) || (Config == NULL)) {
+    return;
+  }
+
+  Line = IniData;
+  DeviceIndex = 0;
+
+  while ((Line != NULL) && (*Line != '\0')) {
+    // Find next line
+    NextLine = AsciiStrStr(Line, "\n");
+    if (NextLine != NULL) {
+      *NextLine = '\0';
+      NextLine++;
+    }
+
+    // Trim line
+    TrimString(Line);
+
+    // Skip empty lines, comments, and section headers
+    if ((*Line == '\0') || (*Line == '#') || (*Line == ';') || (*Line == '[')) {
+      Line = NextLine;
+      continue;
+    }
+
+    // Find '=' separator
+    Equals = AsciiStrStr(Line, "=");
+    if (Equals == NULL) {
+      Line = NextLine;
+      continue;
+    }
+
+    *Equals = '\0';
+    Key = Line;
+    Value = Equals + 1;
+
+    // Trim key and value
+    TrimString(Key);
+    TrimString(Value);
+
+    // Skip empty values
+    if (*Value == '\0') {
+      Line = NextLine;
+      continue;
+    }
+
+    // Parse known configuration keys
+    if (AsciiStrCmp(Key, "Version") == 0) {
+      // Already parsed separately
+    }
+    else if (AsciiStrCmp(Key, "Deadzone") == 0) {
+      Config->StickDeadzone = (UINT16)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "TriggerThreshold") == 0) {
+      Config->TriggerThreshold = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftTrigger") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->LeftTriggerKey = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->LeftTriggerKey = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "RightTrigger") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->RightTriggerKey = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->RightTriggerKey = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    // Parse custom devices (Device1=, Device2=, etc.)
+    else if ((AsciiStrnCmp(Key, "Device", 6) == 0) && (DeviceIndex < MAX_CUSTOM_DEVICES)) {
+      if (ParseDeviceString(Value, &Config->CustomDevices[DeviceIndex])) {
+        DeviceIndex++;
+      }
+    }
+    // Button mappings (ButtonA=, ButtonB=, etc. - can be expanded later)
+
+    Line = NextLine;
+  }
+
+  Config->CustomDeviceCount = DeviceIndex;
+}
+
+/**
+  Validate and sanitize configuration values.
+
+  @param  Config  Configuration structure to validate (modified in place).
+**/
+STATIC
+VOID
+ValidateAndSanitizeConfig (
+  IN OUT XBOX360_CONFIG  *Config
+  )
+{
+  UINTN  i;
+
+  if (Config == NULL) {
+    return;
+  }
+
+  // Clamp deadzone to valid range
+  if (Config->StickDeadzone > 32767) {
+    DEBUG((DEBUG_WARN, "Xbox360: Deadzone %d out of range, clamping to 32767\n", Config->StickDeadzone));
+    Config->StickDeadzone = 32767;
+  }
+
+  // Validate trigger keys (USB HID scan codes should be <= 0xE7)
+  if ((Config->LeftTriggerKey > 0xE7) && (Config->LeftTriggerKey != 0xFF)) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid LeftTriggerKey 0x%02X, using default\n", Config->LeftTriggerKey));
+    Config->LeftTriggerKey = 0x4C;
+  }
+
+  if ((Config->RightTriggerKey > 0xE7) && (Config->RightTriggerKey != 0xFF)) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid RightTriggerKey 0x%02X, using default\n", Config->RightTriggerKey));
+    Config->RightTriggerKey = 0x4D;
+  }
+
+  // Validate button mappings
+  for (i = 0; i < 16; i++) {
+    if ((Config->ButtonMap[i] > 0xE7) && (Config->ButtonMap[i] != 0xFF)) {
+      DEBUG((DEBUG_WARN, "Xbox360: Invalid scan code 0x%02X for button %d, disabling\n", Config->ButtonMap[i], i));
+      Config->ButtonMap[i] = 0xFF;
+    }
+  }
+
+  // Clamp custom device count
+  if (Config->CustomDeviceCount > MAX_CUSTOM_DEVICES) {
+    DEBUG((DEBUG_WARN, "Xbox360: Custom device count %d exceeds maximum, clamping to %d\n", 
+      Config->CustomDeviceCount, MAX_CUSTOM_DEVICES));
+    Config->CustomDeviceCount = MAX_CUSTOM_DEVICES;
+  }
+
+  // Update version to current
+  Config->Version = XBOX360_CONFIG_VERSION_CURRENT;
+}
+
+/**
+  Generate default configuration file template.
+
+  @retval Pointer to configuration template string (static storage).
+**/
+STATIC
+CHAR8 *
+GenerateConfigTemplate (
+  VOID
+  )
+{
+  STATIC CHAR8 Template[] = 
+    "# Xbox 360 Controller Driver Configuration\r\n"
+    "# =========================================\r\n"
+    "# Edit this file and reboot to apply changes\r\n"
+    "# This file was auto-generated on first boot\r\n"
+    "\r\n"
+    "Version=1.0\r\n"
+    "\r\n"
+    "# Analog Stick Settings\r\n"
+    "# Deadzone: 0-32767 (default: 8000)\r\n"
+    "Deadzone=8000\r\n"
+    "\r\n"
+    "# Trigger Settings\r\n"
+    "# TriggerThreshold: 0-255 (default: 128)\r\n"
+    "TriggerThreshold=128\r\n"
+    "\r\n"
+    "# Trigger key mappings (USB HID scan codes)\r\n"
+    "LeftTrigger=0x4C          # Delete\r\n"
+    "RightTrigger=0x4D         # End\r\n"
+    "\r\n"
+    "# Custom Device Support\r\n"
+    "# Add your own Xbox 360 compatible devices here\r\n"
+    "# Format: DeviceN=VID:PID:Description\r\n"
+    "# Example: Device1=0x1234:0x5678:My Custom Controller\r\n"
+    "#\r\n"
+    "# [CustomDevices]\r\n"
+    "# Device1=\r\n"
+    "# Device2=\r\n"
+    "\r\n"
+    "# End of configuration\r\n";
+  
+  return Template;
+}
+
+/**
+  Try to read configuration file from a specific volume.
+
+  @param  FileSystem  File system protocol instance.
+  @param  ConfigData  Output pointer to allocated config data.
+  @param  ConfigSize  Output size of config data.
+
+  @retval EFI_SUCCESS      Config file read successfully.
+  @retval EFI_NOT_FOUND    Config file not found on this volume.
+  @retval Other            Error reading file.
+**/
+STATIC
+EFI_STATUS
+TryReadConfigFromVolume (
+  IN  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem,
+  OUT CHAR8                            **ConfigData,
+  OUT UINTN                            *ConfigSize
+  )
+{
+  EFI_STATUS         Status;
+  EFI_FILE_PROTOCOL  *Root;
+  EFI_FILE_PROTOCOL  *ConfigFile;
+  EFI_FILE_INFO      *FileInfo;
+  UINTN              InfoSize;
+  UINTN              BufferSize;
+  CHAR8              *Buffer;
+  CHAR16             *ConfigPaths[] = {
+    L"EFI\\Xbox360\\config.ini",
+    L"EFI\\BOOT\\xbox360.ini",
+    L"xbox360.ini",
+    NULL
+  };
+  UINTN              PathIndex;
+
+  if ((FileSystem == NULL) || (ConfigData == NULL) || (ConfigSize == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Status = FileSystem->OpenVolume(FileSystem, &Root);
+  if (EFI_ERROR(Status)) {
+    return Status;
+  }
+
+  // Try multiple possible paths
+  for (PathIndex = 0; ConfigPaths[PathIndex] != NULL; PathIndex++) {
+    Status = Root->Open(
+      Root,
+      &ConfigFile,
+      ConfigPaths[PathIndex],
+      EFI_FILE_MODE_READ,
+      0
+    );
+
+    if (!EFI_ERROR(Status)) {
+      // Found config file, read it
+      InfoSize = SIZE_OF_EFI_FILE_INFO + 256;
+      FileInfo = AllocatePool(InfoSize);
+      if (FileInfo == NULL) {
+        ConfigFile->Close(ConfigFile);
+        Root->Close(Root);
+        return EFI_OUT_OF_RESOURCES;
+      }
+
+      Status = ConfigFile->GetInfo(
+        ConfigFile,
+        &gEfiFileInfoGuid,
+        &InfoSize,
+        FileInfo
+      );
+
+      if (EFI_ERROR(Status)) {
+        FreePool(FileInfo);
+        ConfigFile->Close(ConfigFile);
+        Root->Close(Root);
+        return Status;
+      }
+
+      BufferSize = (UINTN)FileInfo->FileSize;
+      Buffer = AllocateZeroPool(BufferSize + 1);
+      if (Buffer == NULL) {
+        FreePool(FileInfo);
+        ConfigFile->Close(ConfigFile);
+        Root->Close(Root);
+        return EFI_OUT_OF_RESOURCES;
+      }
+
+      Status = ConfigFile->Read(ConfigFile, &BufferSize, Buffer);
+      Buffer[BufferSize] = '\0'; // Null terminate
+
+      FreePool(FileInfo);
+      ConfigFile->Close(ConfigFile);
+      Root->Close(Root);
+
+      if (!EFI_ERROR(Status)) {
+        *ConfigData = Buffer;
+        *ConfigSize = BufferSize;
+        return EFI_SUCCESS;
+      } else {
+        FreePool(Buffer);
+        return Status;
+      }
+    }
+  }
+
+  Root->Close(Root);
+  return EFI_NOT_FOUND;
+}
+
+/**
+  Find and read configuration file from any available volume.
+
+  @param  ConfigData  Output pointer to allocated config data.
+  @param  ConfigSize  Output size of config data.
+
+  @retval EFI_SUCCESS      Config file found and read.
+  @retval EFI_NOT_FOUND    Config file not found on any volume.
+  @retval Other            Error.
+**/
+STATIC
+EFI_STATUS
+FindAndReadConfig (
+  OUT CHAR8  **ConfigData,
+  OUT UINTN  *ConfigSize
+  )
+{
+  EFI_STATUS                       Status;
+  EFI_HANDLE                       *HandleBuffer;
+  UINTN                            HandleCount;
+  UINTN                            Index;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem;
+
+  if ((ConfigData == NULL) || (ConfigSize == NULL)) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  // Locate all file system handles
+  Status = gBS->LocateHandleBuffer(
+    ByProtocol,
+    &gEfiSimpleFileSystemProtocolGuid,
+    NULL,
+    &HandleCount,
+    &HandleBuffer
+  );
+
+  if (EFI_ERROR(Status)) {
+    return Status;
+  }
+
+  // Try each file system
+  for (Index = 0; Index < HandleCount; Index++) {
+    Status = gBS->HandleProtocol(
+      HandleBuffer[Index],
+      &gEfiSimpleFileSystemProtocolGuid,
+      (VOID**)&FileSystem
+    );
+
+    if (!EFI_ERROR(Status)) {
+      Status = TryReadConfigFromVolume(FileSystem, ConfigData, ConfigSize);
+      if (!EFI_ERROR(Status)) {
+        // Found and loaded successfully
+        FreePool(HandleBuffer);
+        return EFI_SUCCESS;
+      }
+    }
+  }
+
+  FreePool(HandleBuffer);
+  return EFI_NOT_FOUND;
+}
+
+/**
+  Try to write configuration file to a specific volume.
+
+  @param  FileSystem  File system protocol instance.
+
+  @retval EFI_SUCCESS  Config file written successfully.
+  @retval Other        Error writing file.
+**/
+STATIC
+EFI_STATUS
+TryWriteConfigToVolume (
+  IN EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem
+  )
+{
+  EFI_STATUS         Status;
+  EFI_FILE_PROTOCOL  *Root;
+  EFI_FILE_PROTOCOL  *Dir;
+  EFI_FILE_PROTOCOL  *ConfigFile;
+  CHAR8              *ConfigTemplate;
+  UINTN              ConfigSize;
+
+  if (FileSystem == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Status = FileSystem->OpenVolume(FileSystem, &Root);
+  if (EFI_ERROR(Status)) {
+    return Status;
+  }
+
+  // Try to open EFI directory (must exist for this to be valid ESP)
+  Status = Root->Open(
+    Root,
+    &Dir,
+    L"EFI",
+    EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE,
+    EFI_FILE_DIRECTORY
+  );
+
+  if (EFI_ERROR(Status)) {
+    Root->Close(Root);
+    return Status;
+  }
+  Dir->Close(Dir);
+
+  // Create Xbox360 directory
+  Status = Root->Open(
+    Root,
+    &Dir,
+    L"EFI\\Xbox360",
+    EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE,
+    EFI_FILE_DIRECTORY
+  );
+
+  if (EFI_ERROR(Status)) {
+    Root->Close(Root);
+    return Status;
+  }
+
+  // Create config file
+  Status = Dir->Open(
+    Dir,
+    &ConfigFile,
+    L"config.ini",
+    EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE,
+    0
+  );
+
+  Dir->Close(Dir);
+
+  if (EFI_ERROR(Status)) {
+    Root->Close(Root);
+    return Status;
+  }
+
+  // Write config template
+  ConfigTemplate = GenerateConfigTemplate();
+  ConfigSize = AsciiStrLen(ConfigTemplate);
+
+  Status = ConfigFile->Write(ConfigFile, &ConfigSize, ConfigTemplate);
+
+  ConfigFile->Close(ConfigFile);
+  Root->Close(Root);
+
+  return Status;
+}
+
+/**
+  Generate default configuration file on first run.
+
+  @retval EFI_SUCCESS  Config file created successfully.
+  @retval Other        Error creating file (not critical).
+**/
+STATIC
+EFI_STATUS
+GenerateDefaultConfigFile (
+  VOID
+  )
+{
+  EFI_STATUS                       Status;
+  EFI_HANDLE                       *HandleBuffer;
+  UINTN                            HandleCount;
+  UINTN                            Index;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem;
+
+  // Locate all file system handles
+  Status = gBS->LocateHandleBuffer(
+    ByProtocol,
+    &gEfiSimpleFileSystemProtocolGuid,
+    NULL,
+    &HandleCount,
+    &HandleBuffer
+  );
+
+  if (EFI_ERROR(Status)) {
+    return Status;
+  }
+
+  // Try each file system until successful
+  for (Index = 0; Index < HandleCount; Index++) {
+    Status = gBS->HandleProtocol(
+      HandleBuffer[Index],
+      &gEfiSimpleFileSystemProtocolGuid,
+      (VOID**)&FileSystem
+    );
+
+    if (!EFI_ERROR(Status)) {
+      Status = TryWriteConfigToVolume(FileSystem);
+      if (!EFI_ERROR(Status)) {
+        // Successfully created config
+        FreePool(HandleBuffer);
+        return EFI_SUCCESS;
+      }
+    }
+  }
+
+  FreePool(HandleBuffer);
+  return EFI_NOT_FOUND;
+}
+
+/**
+  Load configuration with version migration support.
+
+  @param  Config  Pointer to configuration structure to populate.
+
+  @retval EFI_SUCCESS  Configuration loaded (or defaults used).
+**/
+STATIC
+EFI_STATUS
+LoadConfigWithMigration (
+  OUT XBOX360_CONFIG  *Config
+  )
+{
+  EFI_STATUS  Status;
+  CHAR8       *ConfigData;
+  UINTN       ConfigSize;
+  UINT16      FileVersion;
+
+  if (Config == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  // Step 1: Set all defaults
+  SetDefaultConfig(Config);
+
+  // Step 2: Try to read config file
+  Status = FindAndReadConfig(&ConfigData, &ConfigSize);
+  if (EFI_ERROR(Status)) {
+    if (Status == EFI_NOT_FOUND) {
+      DEBUG((DEBUG_WARN, "Xbox360: Config file not found, generating template...\n"));
+      
+      Status = GenerateDefaultConfigFile();
+      if (!EFI_ERROR(Status)) {
+        DEBUG((DEBUG_INFO, "Xbox360: Config template created at \\EFI\\Xbox360\\config.ini\n"));
+        DEBUG((DEBUG_INFO, "Xbox360: Edit and reboot to customize\n"));
+      } else {
+        DEBUG((DEBUG_WARN, "Xbox360: Could not create config file (using defaults)\n"));
+      }
+    }
+    
+    // Use defaults
+    return EFI_SUCCESS;
+  }
+
+  // Step 3: Parse version
+  FileVersion = ParseConfigVersion(ConfigData);
+  
+  DEBUG((DEBUG_INFO, "Xbox360: Config file found, version: %d.%d\n",
+    (FileVersion >> 8), (FileVersion & 0xFF)));
+
+  // Step 4: Parse configuration
+  ParseIniConfig(ConfigData, Config);
+
+  // Step 5: Validate and sanitize
+  ValidateAndSanitizeConfig(Config);
+
+  FreePool(ConfigData);
+
+  DEBUG((DEBUG_INFO, "Xbox360: Configuration loaded successfully\n"));
+  return EFI_SUCCESS;
+}
+
+//
+// =============================================================================
+// Dynamic Device List Management
+// =============================================================================
+//
+
+/**
+  Initialize the Xbox 360 compatible device list.
+  Combines built-in devices with custom devices from config file.
+
+  @param  Config  Pointer to configuration structure containing custom devices.
+
+  @retval EFI_SUCCESS  Device list initialized successfully.
+**/
+EFI_STATUS
+InitializeDeviceList (
+  IN XBOX360_CONFIG  *Config
+  )
+{
+  UINTN  TotalDevices;
+  UINTN  Index;
+
+  if (mDeviceListInitialized) {
+    return EFI_SUCCESS;
+  }
+
+  if (Config == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  // Calculate total device count
+  TotalDevices = XBOX360_BUILTIN_DEVICE_COUNT + Config->CustomDeviceCount;
+
+  // Allocate memory for combined list
+  mXbox360DeviceList = AllocateZeroPool(sizeof(XBOX360_COMPATIBLE_DEVICE) * TotalDevices);
+  
+  if (mXbox360DeviceList == NULL) {
+    // Fallback to built-in only
+    mXbox360DeviceList = (XBOX360_COMPATIBLE_DEVICE*)mXbox360BuiltinDevices;
+    mXbox360DeviceCount = XBOX360_BUILTIN_DEVICE_COUNT;
+    mDeviceListInitialized = TRUE;
+    DEBUG((DEBUG_WARN, "Xbox360: Failed to allocate device list, using built-in only\n"));
+    return EFI_OUT_OF_RESOURCES;
+  }
+
+  // Copy built-in devices
+  CopyMem(
+    mXbox360DeviceList,
+    mXbox360BuiltinDevices,
+    sizeof(XBOX360_COMPATIBLE_DEVICE) * XBOX360_BUILTIN_DEVICE_COUNT
+  );
+
+  // Append custom devices
+  for (Index = 0; Index < Config->CustomDeviceCount; Index++) {
+    CopyMem(
+      &mXbox360DeviceList[XBOX360_BUILTIN_DEVICE_COUNT + Index],
+      &Config->CustomDevices[Index],
+      sizeof(XBOX360_COMPATIBLE_DEVICE)
+    );
+
+    DEBUG((DEBUG_INFO, 
+      "Xbox360: Added custom device: %s (VID:0x%04X PID:0x%04X)\n",
+      Config->CustomDevices[Index].Description,
+      Config->CustomDevices[Index].VendorId,
+      Config->CustomDevices[Index].ProductId
+    ));
+  }
+
+  mXbox360DeviceCount = TotalDevices;
+  mDeviceListInitialized = TRUE;
+
+  DEBUG((DEBUG_INFO, 
+    "Xbox360: Device list initialized (%d built-in + %d custom = %d total)\n",
+    XBOX360_BUILTIN_DEVICE_COUNT,
+    Config->CustomDeviceCount,
+    TotalDevices
+  ));
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Cleanup device list when driver unloads.
+**/
+VOID
+CleanupDeviceList (
+  VOID
+  )
+{
+  UINTN  i;
+
+  if (!mDeviceListInitialized) {
+    return;
+  }
+
+  // Free custom device descriptions
+  if (mXbox360DeviceList != NULL && 
+      mXbox360DeviceList != (XBOX360_COMPATIBLE_DEVICE*)mXbox360BuiltinDevices) {
+    // Free allocated descriptions for custom devices
+    for (i = XBOX360_BUILTIN_DEVICE_COUNT; i < mXbox360DeviceCount; i++) {
+      if (mXbox360DeviceList[i].Description != NULL) {
+        FreePool(mXbox360DeviceList[i].Description);
+      }
+    }
+    FreePool(mXbox360DeviceList);
+  }
+
+  mXbox360DeviceList = NULL;
+  mXbox360DeviceCount = 0;
+  mDeviceListInitialized = FALSE;
+}
+
 /**
   Uses USB I/O to check whether the device is an Xbox 360 compatible controller.
 
@@ -525,19 +1561,27 @@ IsUSBKeyboard (
     return FALSE;
   }
 
+  // Initialize device list if not already done
+  if (!mDeviceListInitialized) {
+    // Use built-in devices only as fallback
+    mXbox360DeviceList = (XBOX360_COMPATIBLE_DEVICE*)mXbox360BuiltinDevices;
+    mXbox360DeviceCount = XBOX360_BUILTIN_DEVICE_COUNT;
+  }
+
   //
-  // Check against known Xbox 360 compatible devices list
+  // Check against combined device list (built-in + custom)
   //
-  for (Index = 0; Index < XBOX360_COMPATIBLE_DEVICE_COUNT; Index++) {
-    if ((DeviceDescriptor.IdVendor == mXbox360CompatibleDevices[Index].VendorId) &&
-        (DeviceDescriptor.IdProduct == mXbox360CompatibleDevices[Index].ProductId))
+  for (Index = 0; Index < mXbox360DeviceCount; Index++) {
+    if ((DeviceDescriptor.IdVendor == mXbox360DeviceList[Index].VendorId) &&
+        (DeviceDescriptor.IdProduct == mXbox360DeviceList[Index].ProductId))
     {
       DEBUG ((
         DEBUG_INFO,
-        "Xbox360Dxe: Found compatible device: %s (VID:0x%04X PID:0x%04X)\n",
-        mXbox360CompatibleDevices[Index].Description,
+        "Xbox360Dxe: Found compatible device: %s (VID:0x%04X PID:0x%04X)%a\n",
+        mXbox360DeviceList[Index].Description,
         DeviceDescriptor.IdVendor,
-        DeviceDescriptor.IdProduct
+        DeviceDescriptor.IdProduct,
+        (Index >= XBOX360_BUILTIN_DEVICE_COUNT) ? " [CUSTOM]" : ""
         ));
       return TRUE;
     }
@@ -970,6 +2014,16 @@ InitUSBKeyboard (
     UsbKeyboardDevice->DevicePath
     );
 
+  //
+  // Load configuration from file (or use defaults)
+  //
+  LoadConfigWithMigration(&mGlobalConfig);
+
+  //
+  // Initialize dynamic device list with custom devices
+  //
+  InitializeDeviceList(&mGlobalConfig);
+
   InitQueue (&UsbKeyboardDevice->UsbKeyQueue, sizeof (USB_KEY));
   InitQueue (&UsbKeyboardDevice->EfiKeyQueue, sizeof (EFI_KEY_DATA));
   InitQueue (&UsbKeyboardDevice->EfiKeyQueueForNotify, sizeof (EFI_KEY_DATA));
@@ -1222,11 +2276,61 @@ KeyboardHandler (
 
   Report = (UINT8 *)Data;
 
+  //
+  // Parse button state (bytes 2-3)
+  //
   OldButtons = UsbKeyboardDevice->XboxState.Buttons;
   NewButtons = (UINT16)(Report[2] | ((UINT16)Report[3] << 8));
   if (OldButtons != NewButtons) {
     ProcessButtonChanges (UsbKeyboardDevice, OldButtons, NewButtons);
     UsbKeyboardDevice->XboxState.Buttons = NewButtons;
+  }
+
+  //
+  // Parse trigger state (bytes 4-5)
+  //
+  if (DataLength >= 6) {
+    UINT8    LeftTrigger;
+    UINT8    RightTrigger;
+    BOOLEAN  LeftTriggerPressed;
+    BOOLEAN  RightTriggerPressed;
+    BOOLEAN  OldLeftTrigger;
+    BOOLEAN  OldRightTrigger;
+
+    LeftTrigger = Report[4];
+    RightTrigger = Report[5];
+
+    // Check triggers against threshold
+    LeftTriggerPressed = (LeftTrigger > mGlobalConfig.TriggerThreshold);
+    RightTriggerPressed = (RightTrigger > mGlobalConfig.TriggerThreshold);
+
+    // Get previous trigger states
+    OldLeftTrigger = UsbKeyboardDevice->XboxState.LeftTriggerActive;
+    OldRightTrigger = UsbKeyboardDevice->XboxState.RightTriggerActive;
+
+    // Handle left trigger state change
+    if (LeftTriggerPressed != OldLeftTrigger) {
+      if (mGlobalConfig.LeftTriggerKey != 0xFF) {
+        QueueButtonTransition(
+          UsbKeyboardDevice,
+          mGlobalConfig.LeftTriggerKey,
+          LeftTriggerPressed
+        );
+      }
+      UsbKeyboardDevice->XboxState.LeftTriggerActive = LeftTriggerPressed;
+    }
+
+    // Handle right trigger state change
+    if (RightTriggerPressed != OldRightTrigger) {
+      if (mGlobalConfig.RightTriggerKey != 0xFF) {
+        QueueButtonTransition(
+          UsbKeyboardDevice,
+          mGlobalConfig.RightTriggerKey,
+          RightTriggerPressed
+        );
+      }
+      UsbKeyboardDevice->XboxState.RightTriggerActive = RightTriggerPressed;
+    }
   }
 
   UsbKeyboardDevice->RepeatKey = 0;
