@@ -4299,57 +4299,10 @@ USBKeyboardSimplePointerGetState (
                     (UsbKeyboardDevice->SimplePointerState.RightButton != UsbKeyboardDevice->LastReportedRightButton);
 
   //
-  // Report state if there's movement OR button change
-  // Special case: When mouse mode is active and stick is being used,
-  // always report to maintain polling rate even if calculated movement is 0
+  // Only report if there's movement OR button state change
   //
   if (!HasMovement && !HasButtonChange) {
-    BOOLEAN  MouseModeActive;
-    INT16    StickX, StickY;
-    INT32    AbsX, AbsY, Magnitude;
-    UINT16   DeadzoneThreshold;
-    
-    MouseModeActive = FALSE;
-    
-    //
-    // Check if left stick is in mouse mode and actively being used
-    //
-    if (mGlobalConfig.LeftStick.Mode == STICK_MODE_MOUSE) {
-      StickX = UsbKeyboardDevice->XboxState.LeftStickX;
-      StickY = UsbKeyboardDevice->XboxState.LeftStickY;
-      AbsX = (StickX < 0) ? -StickX : StickX;
-      AbsY = (StickY < 0) ? -StickY : StickY;
-      Magnitude = (AbsX > AbsY) ? AbsX : AbsY;
-      
-      // Use half deadzone as threshold to maintain polling
-      DeadzoneThreshold = mGlobalConfig.LeftStick.Deadzone / 2;
-      if (Magnitude > DeadzoneThreshold) {
-        MouseModeActive = TRUE;
-      }
-    }
-    
-    //
-    // Check if right stick is in mouse mode and actively being used
-    //
-    if (!MouseModeActive && mGlobalConfig.RightStick.Mode == STICK_MODE_MOUSE) {
-      StickX = UsbKeyboardDevice->XboxState.RightStickX;
-      StickY = UsbKeyboardDevice->XboxState.RightStickY;
-      AbsX = (StickX < 0) ? -StickX : StickX;
-      AbsY = (StickY < 0) ? -StickY : StickY;
-      Magnitude = (AbsX > AbsY) ? AbsX : AbsY;
-      
-      DeadzoneThreshold = mGlobalConfig.RightStick.Deadzone / 2;
-      if (Magnitude > DeadzoneThreshold) {
-        MouseModeActive = TRUE;
-      }
-    }
-    
-    //
-    // If no active mouse input, return not ready
-    //
-    if (!MouseModeActive) {
-      return EFI_NOT_READY;
-    }
+    return EFI_NOT_READY;
   }
 
   //
