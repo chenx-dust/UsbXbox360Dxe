@@ -794,6 +794,32 @@ SetDefaultConfig (
   Config->ButtonMap[15] = 0x2B;  // Y -> Tab
 
   Config->CustomDeviceCount = 0;
+  
+  // Left stick defaults: Keys mode with 4-way direction mapping
+  Config->LeftStick.Mode = STICK_MODE_KEYS;
+  Config->LeftStick.Deadzone = 8000;
+  Config->LeftStick.Saturation = 32000;
+  Config->LeftStick.MouseSensitivity = 50;
+  Config->LeftStick.MouseMaxSpeed = 20;
+  Config->LeftStick.MouseCurve = 2;  // Square curve (recommended)
+  Config->LeftStick.DirectionMode = 4;  // 4-way
+  Config->LeftStick.UpMapping = 0x52;    // Up Arrow
+  Config->LeftStick.DownMapping = 0x51;  // Down Arrow
+  Config->LeftStick.LeftMapping = 0x50;  // Left Arrow
+  Config->LeftStick.RightMapping = 0x4F; // Right Arrow
+  
+  // Right stick defaults: Disabled
+  Config->RightStick.Mode = STICK_MODE_DISABLED;
+  Config->RightStick.Deadzone = 8689;  // Xbox standard for right stick
+  Config->RightStick.Saturation = 32000;
+  Config->RightStick.MouseSensitivity = 50;
+  Config->RightStick.MouseMaxSpeed = 20;
+  Config->RightStick.MouseCurve = 2;
+  Config->RightStick.DirectionMode = 4;
+  Config->RightStick.UpMapping = 0x1A;    // W
+  Config->RightStick.DownMapping = 0x16;  // S
+  Config->RightStick.LeftMapping = 0x04;  // A
+  Config->RightStick.RightMapping = 0x07; // D
 }
 
 /**
@@ -1047,6 +1073,118 @@ ParseIniConfig (
     else if ((AsciiStrnCmp(Key, "Device", 6) == 0) && (DeviceIndex < MAX_CUSTOM_DEVICES)) {
       if (ParseDeviceString(Value, &Config->CustomDevices[DeviceIndex])) {
         DeviceIndex++;
+      }
+    }
+    // Parse left stick configuration
+    else if (AsciiStrCmp(Key, "LeftStickMode") == 0) {
+      if (AsciiStrCmp(Value, "Mouse") == 0 || AsciiStrCmp(Value, "mouse") == 0) {
+        Config->LeftStick.Mode = STICK_MODE_MOUSE;
+      } else if (AsciiStrCmp(Value, "Keys") == 0 || AsciiStrCmp(Value, "keys") == 0) {
+        Config->LeftStick.Mode = STICK_MODE_KEYS;
+      } else if (AsciiStrCmp(Value, "Disabled") == 0 || AsciiStrCmp(Value, "disabled") == 0) {
+        Config->LeftStick.Mode = STICK_MODE_DISABLED;
+      }
+    }
+    else if (AsciiStrCmp(Key, "LeftStickDeadzone") == 0) {
+      Config->LeftStick.Deadzone = (UINT16)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftStickSaturation") == 0) {
+      Config->LeftStick.Saturation = (UINT16)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftStickMouseSensitivity") == 0) {
+      Config->LeftStick.MouseSensitivity = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftStickMouseMaxSpeed") == 0) {
+      Config->LeftStick.MouseMaxSpeed = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftStickMouseCurve") == 0) {
+      Config->LeftStick.MouseCurve = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftStickDirectionMode") == 0) {
+      Config->LeftStick.DirectionMode = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "LeftStickUpMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->LeftStick.UpMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->LeftStick.UpMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "LeftStickDownMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->LeftStick.DownMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->LeftStick.DownMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "LeftStickLeftMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->LeftStick.LeftMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->LeftStick.LeftMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "LeftStickRightMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->LeftStick.RightMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->LeftStick.RightMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    // Parse right stick configuration
+    else if (AsciiStrCmp(Key, "RightStickMode") == 0) {
+      if (AsciiStrCmp(Value, "Mouse") == 0 || AsciiStrCmp(Value, "mouse") == 0) {
+        Config->RightStick.Mode = STICK_MODE_MOUSE;
+      } else if (AsciiStrCmp(Value, "Keys") == 0 || AsciiStrCmp(Value, "keys") == 0) {
+        Config->RightStick.Mode = STICK_MODE_KEYS;
+      } else if (AsciiStrCmp(Value, "Disabled") == 0 || AsciiStrCmp(Value, "disabled") == 0) {
+        Config->RightStick.Mode = STICK_MODE_DISABLED;
+      }
+    }
+    else if (AsciiStrCmp(Key, "RightStickDeadzone") == 0) {
+      Config->RightStick.Deadzone = (UINT16)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickSaturation") == 0) {
+      Config->RightStick.Saturation = (UINT16)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickMouseSensitivity") == 0) {
+      Config->RightStick.MouseSensitivity = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickMouseMaxSpeed") == 0) {
+      Config->RightStick.MouseMaxSpeed = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickMouseCurve") == 0) {
+      Config->RightStick.MouseCurve = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickDirectionMode") == 0) {
+      Config->RightStick.DirectionMode = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickUpMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->RightStick.UpMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->RightStick.UpMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "RightStickDownMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->RightStick.DownMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->RightStick.DownMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "RightStickLeftMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->RightStick.LeftMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->RightStick.LeftMapping = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "RightStickRightMapping") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->RightStick.RightMapping = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->RightStick.RightMapping = (UINT8)AsciiStrHexToUintn(Value);
       }
     }
 
