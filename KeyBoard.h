@@ -59,6 +59,12 @@ Xbox360LogCleanup (
   VOID
   );
 
+VOID
+EFIAPI
+Xbox360LogSetImageHandle (
+  IN EFI_HANDLE  ImageHandle
+  );
+
 #if XBOX360_LOG_ENABLED
   #define LOG_INFO(...)   Xbox360Log(LOG_LEVEL_INFO, __VA_ARGS__)
   #define LOG_WARN(...)   Xbox360Log(LOG_LEVEL_WARN, __VA_ARGS__)

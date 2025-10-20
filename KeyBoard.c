@@ -128,9 +128,10 @@ STATIC XBOX360_CONFIG  mGlobalConfig;
 // ============================================================================
 //
 
-STATIC UINT32   mLogSequence = 0;
-STATIC BOOLEAN  mLogInitialized = FALSE;
-STATIC CHAR16   mCurrentLogFileName[64];  // Cache current log file name
+STATIC UINT32    mLogSequence = 0;
+STATIC BOOLEAN   mLogInitialized = FALSE;
+STATIC CHAR16    mCurrentLogFileName[64];  // Cache current log file name
+STATIC EFI_HANDLE mDriverImageHandle = NULL;  // Driver's own image handle for locating ESP
 
 /**
   Get current time as EFI_TIME structure.
@@ -519,7 +520,7 @@ Xbox360Log (
 {
   EFI_STATUS                       Status;
   UINTN                            HandleCount;
-  EFI_HANDLE                       *HandleBuffer;
+  EFI_HANDLE                       *HandleBuffer = NULL;
   UINTN                            Index;
   EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *Fs;
   EFI_FILE_PROTOCOL                *Root;
@@ -583,7 +584,37 @@ Xbox360Log (
   // Get current log file name (based on today's date)
   GetCurrentLogFileName (LogFileName);
 
-  // Try to find ESP partition and write log
+  // Try to use driver's loaded image to find the correct ESP partition
+  if (mDriverImageHandle != NULL) {
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+    
+    Status = gBS->HandleProtocol (
+                    mDriverImageHandle,
+                    &gEfiLoadedImageProtocolGuid,
+                    (VOID **)&LoadedImage
+                    );
+    
+    if (!EFI_ERROR (Status) && LoadedImage->DeviceHandle != NULL) {
+      // Try to get file system from the device where driver was loaded
+      Status = gBS->HandleProtocol (
+                      LoadedImage->DeviceHandle,
+                      &gEfiSimpleFileSystemProtocolGuid,
+                      (VOID **)&Fs
+                      );
+      
+      if (!EFI_ERROR (Status)) {
+        Status = Fs->OpenVolume (Fs, &Root);
+        
+        if (!EFI_ERROR (Status)) {
+          // This is the partition where the driver was loaded from
+          // Try to write log here first
+          goto WriteToPartition;
+        }
+      }
+    }
+  }
+
+  // Fallback: Try to find ESP partition by enumerating all file systems
   Status = gBS->LocateHandleBuffer (
                   ByProtocol,
                   &gEfiSimpleFileSystemProtocolGuid,
@@ -610,6 +641,7 @@ Xbox360Log (
       continue;
     }
 
+WriteToPartition:
     // Ensure Xbox360 directory exists
     EFI_FILE_PROTOCOL *XboxDir;
     Status = Root->Open (
@@ -689,14 +721,18 @@ Xbox360Log (
       LogFile->Close (LogFile);
       
       Root->Close (Root);
-      gBS->FreePool (HandleBuffer);
+      if (HandleBuffer != NULL) {
+        gBS->FreePool (HandleBuffer);
+      }
       return;  // Success
     }
 
     Root->Close (Root);
   }
 
-  gBS->FreePool (HandleBuffer);
+  if (HandleBuffer != NULL) {
+    gBS->FreePool (HandleBuffer);
+  }
 }
 
 /**
@@ -751,6 +787,23 @@ Xbox360LogCleanup (
 
   gBS->FreePool (HandleBuffer);
 #endif
+}
+
+/**
+  Set the driver's image handle for logging system.
+  This allows the logging system to locate the correct ESP partition.
+
+  @param  ImageHandle  Driver's image handle
+
+  @retval None
+**/
+VOID
+EFIAPI
+Xbox360LogSetImageHandle (
+  IN EFI_HANDLE  ImageHandle
+  )
+{
+  mDriverImageHandle = ImageHandle;
 }
 
 //
@@ -2740,20 +2793,14 @@ IsUSBKeyboard (
 
   Status = UsbIo->UsbGetDeviceDescriptor (UsbIo, &DeviceDescriptor);
   if (EFI_ERROR (Status)) {
-    LOG_ERROR ("Failed to get device descriptor: %r", Status);
     return FALSE;
   }
-
-  LOG_INFO ("Checking device VID:0x%04X PID:0x%04X", 
-            DeviceDescriptor.IdVendor, 
-            DeviceDescriptor.IdProduct);
 
   // Initialize device list if not already done
   if (!mDeviceListInitialized) {
     // Use built-in devices only as fallback
     mXbox360DeviceList = (XBOX360_COMPATIBLE_DEVICE*)mXbox360BuiltinDevices;
     mXbox360DeviceCount = XBOX360_BUILTIN_DEVICE_COUNT;
-    LOG_INFO ("Using built-in device list (%d devices)", (UINT32)mXbox360DeviceCount);
   }
 
   //
@@ -2763,14 +2810,15 @@ IsUSBKeyboard (
     if ((DeviceDescriptor.IdVendor == mXbox360DeviceList[Index].VendorId) &&
         (DeviceDescriptor.IdProduct == mXbox360DeviceList[Index].ProductId))
     {
-      LOG_INFO ("MATCH FOUND! Device: %s (VID:0x%04X PID:0x%04X)%a",
+      // Found a match! Log the details
+      LOG_INFO ("MATCH FOUND! Device: %a (VID:0x%04X PID:0x%04X)%a",
                 mXbox360DeviceList[Index].Description,
                 DeviceDescriptor.IdVendor,
                 DeviceDescriptor.IdProduct,
                 (Index >= XBOX360_BUILTIN_DEVICE_COUNT) ? " [CUSTOM]" : "");
       DEBUG ((
         DEBUG_INFO,
-        "Xbox360Dxe: Found compatible device: %s (VID:0x%04X PID:0x%04X)%a\n",
+        "Xbox360Dxe: Found compatible device: %a (VID:0x%04X PID:0x%04X)%a\n",
         mXbox360DeviceList[Index].Description,
         DeviceDescriptor.IdVendor,
         DeviceDescriptor.IdProduct,
@@ -2780,7 +2828,7 @@ IsUSBKeyboard (
     }
   }
 
-  LOG_INFO ("No match found in device list");
+  // Not a match - don't log every non-matching device to reduce noise
   return FALSE;
 }
 

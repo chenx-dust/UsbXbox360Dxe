@@ -43,6 +43,9 @@ USBKeyboardDriverBindingEntryPoint (
 {
   EFI_STATUS  Status;
 
+  // Set image handle for logging system to locate correct ESP partition
+  Xbox360LogSetImageHandle (ImageHandle);
+
   LOG_INFO ("Xbox360 Driver Entry Point called");
 
   Status = EfiLibInstallDriverBindingComponentName2 (
@@ -87,8 +90,6 @@ USBKeyboardDriverBindingSupported (
   EFI_STATUS           Status;
   EFI_USB_IO_PROTOCOL  *UsbIo;
 
-  LOG_INFO ("DriverBindingSupported called for controller %p", Controller);
-
   //
   // Check if USB I/O Protocol is attached on the controller handle.
   //
@@ -101,7 +102,7 @@ USBKeyboardDriverBindingSupported (
                   EFI_OPEN_PROTOCOL_BY_DRIVER
                   );
   if (EFI_ERROR (Status)) {
-    LOG_WARN ("OpenProtocol failed: %r", Status);
+    // This is normal - driver checks many devices
     return Status;
   }
 
@@ -112,8 +113,10 @@ USBKeyboardDriverBindingSupported (
   Status = EFI_SUCCESS;
 
   if (!IsUSBKeyboard (UsbIo)) {
-    LOG_INFO ("Device is not an Xbox 360 controller");
     Status = EFI_UNSUPPORTED;
+  } else {
+    // Only log when we find a matching device
+    LOG_INFO ("Xbox 360 controller detected on controller %p", Controller);
   }
 
   gBS->CloseProtocol (
@@ -178,8 +181,11 @@ USBKeyboardDriverBindingStart (
                   EFI_OPEN_PROTOCOL_BY_DRIVER
                   );
   if (EFI_ERROR (Status)) {
+    LOG_ERROR ("Failed to open USB I/O protocol: %r", Status);
     goto ErrorExit1;
   }
+
+  LOG_INFO ("USB I/O protocol opened successfully");
 
   UsbKeyboardDevice = AllocateZeroPool (sizeof (USB_KB_DEV));
   ASSERT (UsbKeyboardDevice != NULL);
@@ -264,9 +270,12 @@ USBKeyboardDriverBindingStart (
     //
     // No interrupt endpoint found, then return unsupported.
     //
+    LOG_ERROR ("No interrupt endpoint found");
     Status = EFI_UNSUPPORTED;
     goto ErrorExit;
   }
+
+  LOG_INFO ("Interrupt endpoint found, initializing device structure");
 
   REPORT_STATUS_CODE_WITH_DEVICE_PATH (
     EFI_PROGRESS_CODE,
@@ -371,11 +380,13 @@ USBKeyboardDriverBindingStart (
   //
   // Reset USB Keyboard Device exhaustively.
   //
+  LOG_INFO ("Performing device reset");
   Status = UsbKeyboardDevice->SimpleInputEx.Reset (
                                               &UsbKeyboardDevice->SimpleInputEx,
                                               TRUE
                                               );
   if (EFI_ERROR (Status)) {
+    LOG_ERROR ("Device reset failed: %r", Status);
     gBS->UninstallMultipleProtocolInterfaces (
            Controller,
            &gEfiSimpleTextInProtocolGuid,
@@ -386,6 +397,8 @@ USBKeyboardDriverBindingStart (
            );
     goto ErrorExit;
   }
+
+  LOG_INFO ("Device reset completed successfully");
 
   //
   // Attempt to install Simple Pointer Protocol for mouse support
@@ -399,10 +412,10 @@ USBKeyboardDriverBindingStart (
                   );
   if (!EFI_ERROR (Status)) {
     UsbKeyboardDevice->SimplePointerInstalled = TRUE;
-    DEBUG ((DEBUG_INFO, "Xbox360: SimplePointer protocol installed successfully\n"));
+    LOG_INFO ("SimplePointer protocol installed successfully");
   } else {
     UsbKeyboardDevice->SimplePointerInstalled = FALSE;
-    DEBUG ((DEBUG_WARN, "Xbox360: SimplePointer protocol installation failed: %r (continuing without mouse support)\n", Status));
+    LOG_WARN ("SimplePointer protocol installation failed: %r (continuing without mouse support)", Status);
   }
 
   //
@@ -411,6 +424,9 @@ USBKeyboardDriverBindingStart (
   EndpointAddr    = UsbKeyboardDevice->IntEndpointDescriptor.EndpointAddress;
   PollingInterval = UsbKeyboardDevice->IntEndpointDescriptor.Interval;
   PacketSize      = (UINT8)(UsbKeyboardDevice->IntEndpointDescriptor.MaxPacketSize);
+
+  LOG_INFO ("Starting USB async interrupt transfer (EP:0x%02X Interval:%dms PacketSize:%d)", 
+            EndpointAddr, PollingInterval, PacketSize);
 
   Status = UsbIo->UsbAsyncInterruptTransfer (
                     UsbIo,
@@ -423,6 +439,7 @@ USBKeyboardDriverBindingStart (
                     );
 
   if (EFI_ERROR (Status)) {
+    LOG_ERROR ("USB async interrupt transfer failed: %r", Status);
     gBS->UninstallMultipleProtocolInterfaces (
            Controller,
            &gEfiSimpleTextInProtocolGuid,
@@ -433,6 +450,8 @@ USBKeyboardDriverBindingStart (
            );
     goto ErrorExit;
   }
+
+  LOG_INFO ("USB async interrupt transfer started successfully");
 
   UsbKeyboardDevice->ControllerNameTable = NULL;
   AddUnicodeString2 (
@@ -450,6 +469,8 @@ USBKeyboardDriverBindingStart (
     FALSE
     );
 
+  LOG_INFO ("Driver initialization completed successfully for controller %p", Controller);
+  
   gBS->RestoreTPL (OldTpl);
   return EFI_SUCCESS;
 
@@ -457,6 +478,8 @@ USBKeyboardDriverBindingStart (
   // Error handler
   //
 ErrorExit:
+  LOG_ERROR ("Driver initialization failed: %r", Status);
+  
   if (UsbKeyboardDevice != NULL) {
     if (UsbKeyboardDevice->TimerEvent != NULL) {
       gBS->CloseEvent (UsbKeyboardDevice->TimerEvent);

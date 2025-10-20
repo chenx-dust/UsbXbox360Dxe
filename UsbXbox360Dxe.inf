@@ -66,6 +66,7 @@
   gEfiSimpleTextInputExProtocolGuid             ## BY_START
   gEfiSimplePointerProtocolGuid                 ## BY_START
   gEfiSimpleFileSystemProtocolGuid              ## SOMETIMES_CONSUMES
+  gEfiLoadedImageProtocolGuid                   ## SOMETIMES_CONSUMES
   #
   # If HII Database Protocol exists, then keyboard layout from HII database is used.
   # Otherwise, USB keyboard module tries to use its carried default layout.
