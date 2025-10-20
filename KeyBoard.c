@@ -164,6 +164,33 @@ ProcessButtonChanges (
   IN UINT16      NewButtons
   );
 
+STATIC
+UINT8
+CalculateStickDirection (
+  IN INT16         X,
+  IN INT16         Y,
+  IN STICK_CONFIG  *Config
+  );
+
+STATIC
+VOID
+ProcessStickDirectionChange (
+  IN USB_KB_DEV    *Device,
+  IN UINT8         OldDir,
+  IN UINT8         NewDir,
+  IN STICK_CONFIG  *Config
+  );
+
+STATIC
+VOID
+ProcessStickChanges (
+  IN USB_KB_DEV  *Device,
+  IN INT16       OldLeftX,
+  IN INT16       OldLeftY,
+  IN INT16       OldRightX,
+  IN INT16       OldRightY
+  );
+
 //
 // Configuration file functions (forward declarations)
 //
@@ -2422,6 +2449,227 @@ ProcessButtonChanges (
 }
 
 /**
+  Calculate analog stick direction based on X/Y values and configuration.
+  
+  @param  X       Stick X-axis value (-32768 ~ 32767)
+  @param  Y       Stick Y-axis value (-32768 ~ 32767)
+  @param  Config  Stick configuration
+  
+  @return Direction bitmask: BIT0=Up, BIT1=Down, BIT2=Left, BIT3=Right
+**/
+STATIC
+UINT8
+CalculateStickDirection (
+  IN INT16         X,
+  IN INT16         Y,
+  IN STICK_CONFIG  *Config
+  )
+{
+  INT32  Magnitude;
+  INT32  AbsX;
+  INT32  AbsY;
+  UINT8  Direction;
+  
+  if (Config == NULL) {
+    return 0;
+  }
+  
+  // Calculate magnitude (approximate: use max of abs values for efficiency)
+  AbsX = (X < 0) ? -X : X;
+  AbsY = (Y < 0) ? -Y : Y;
+  Magnitude = (AbsX > AbsY) ? AbsX : AbsY;
+  
+  // Check deadzone
+  if (Magnitude < Config->Deadzone) {
+    return 0;
+  }
+  
+  Direction = 0;
+  
+  if (Config->DirectionMode == 8) {
+    // 8-way mode: Independent check for each direction
+    // Threshold: ~38% (sin(22.5°) ≈ 0.38)
+    #define THRESHOLD_38 12500  // 32767 * 0.38
+    
+    if (Y > THRESHOLD_38)   Direction |= STICK_DIR_UP;
+    if (Y < -THRESHOLD_38)  Direction |= STICK_DIR_DOWN;
+    if (X < -THRESHOLD_38)  Direction |= STICK_DIR_LEFT;
+    if (X > THRESHOLD_38)   Direction |= STICK_DIR_RIGHT;
+  } else {
+    // 4-way mode: Choose primary direction
+    if (AbsX > AbsY) {
+      // Horizontal primary
+      if (X > Config->Deadzone) {
+        Direction = STICK_DIR_RIGHT;
+      } else if (X < -(INT32)Config->Deadzone) {
+        Direction = STICK_DIR_LEFT;
+      }
+    } else {
+      // Vertical primary
+      if (Y > Config->Deadzone) {
+        Direction = STICK_DIR_UP;
+      } else if (Y < -(INT32)Config->Deadzone) {
+        Direction = STICK_DIR_DOWN;
+      }
+    }
+  }
+  
+  return Direction;
+}
+
+/**
+  Process stick direction change and queue key transitions.
+  
+  @param  Device   USB keyboard device
+  @param  OldDir   Old direction bitmask
+  @param  NewDir   New direction bitmask
+  @param  Config   Stick configuration
+**/
+STATIC
+VOID
+ProcessStickDirectionChange (
+  IN USB_KB_DEV    *Device,
+  IN UINT8         OldDir,
+  IN UINT8         NewDir,
+  IN STICK_CONFIG  *Config
+  )
+{
+  UINT8  Changed;
+  
+  if (Device == NULL || Config == NULL) {
+    return;
+  }
+  
+  // Calculate which directions changed
+  Changed = OldDir ^ NewDir;
+  
+  if (Changed == 0) {
+    return;
+  }
+  
+  // Handle UP
+  if (Changed & STICK_DIR_UP) {
+    if (Config->UpMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->UpMapping,
+        (NewDir & STICK_DIR_UP) != 0
+      );
+    }
+  }
+  
+  // Handle DOWN
+  if (Changed & STICK_DIR_DOWN) {
+    if (Config->DownMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->DownMapping,
+        (NewDir & STICK_DIR_DOWN) != 0
+      );
+    }
+  }
+  
+  // Handle LEFT
+  if (Changed & STICK_DIR_LEFT) {
+    if (Config->LeftMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->LeftMapping,
+        (NewDir & STICK_DIR_LEFT) != 0
+      );
+    }
+  }
+  
+  // Handle RIGHT
+  if (Changed & STICK_DIR_RIGHT) {
+    if (Config->RightMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->RightMapping,
+        (NewDir & STICK_DIR_RIGHT) != 0
+      );
+    }
+  }
+}
+
+/**
+  Process analog stick changes for both sticks.
+  
+  @param  Device      USB keyboard device
+  @param  OldLeftX    Old left stick X value
+  @param  OldLeftY    Old left stick Y value
+  @param  OldRightX   Old right stick X value
+  @param  OldRightY   Old right stick Y value
+**/
+STATIC
+VOID
+ProcessStickChanges (
+  IN USB_KB_DEV  *Device,
+  IN INT16       OldLeftX,
+  IN INT16       OldLeftY,
+  IN INT16       OldRightX,
+  IN INT16       OldRightY
+  )
+{
+  UINT8  OldLeftDir, NewLeftDir;
+  UINT8  OldRightDir, NewRightDir;
+  
+  if (Device == NULL) {
+    return;
+  }
+  
+  // Process left stick (Keys mode only)
+  if (mGlobalConfig.LeftStick.Mode == STICK_MODE_KEYS) {
+    OldLeftDir = CalculateStickDirection(
+      OldLeftX, 
+      OldLeftY, 
+      &mGlobalConfig.LeftStick
+    );
+    NewLeftDir = CalculateStickDirection(
+      Device->XboxState.LeftStickX, 
+      Device->XboxState.LeftStickY, 
+      &mGlobalConfig.LeftStick
+    );
+    
+    if (OldLeftDir != NewLeftDir) {
+      ProcessStickDirectionChange(
+        Device, 
+        OldLeftDir, 
+        NewLeftDir, 
+        &mGlobalConfig.LeftStick
+      );
+      Device->XboxState.LeftStickDir = NewLeftDir;
+    }
+  }
+  
+  // Process right stick (Keys mode only)
+  if (mGlobalConfig.RightStick.Mode == STICK_MODE_KEYS) {
+    OldRightDir = CalculateStickDirection(
+      OldRightX, 
+      OldRightY, 
+      &mGlobalConfig.RightStick
+    );
+    NewRightDir = CalculateStickDirection(
+      Device->XboxState.RightStickX, 
+      Device->XboxState.RightStickY, 
+      &mGlobalConfig.RightStick
+    );
+    
+    if (OldRightDir != NewRightDir) {
+      ProcessStickDirectionChange(
+        Device, 
+        OldRightDir, 
+        NewRightDir, 
+        &mGlobalConfig.RightStick
+      );
+      Device->XboxState.RightStickDir = NewRightDir;
+    }
+  }
+  
+  // TODO: Mouse mode processing will be added in Phase 3
+}
+
+/**
   Handler function for Xbox 360 controller asynchronous interrupt transfer.
 
   The wired Xbox 360 controller sends a fixed length vendor specific report. This handler
@@ -2577,6 +2825,35 @@ KeyboardHandler (
       }
       UsbKeyboardDevice->XboxState.RightTriggerActive = RightTriggerPressed;
     }
+  }
+
+  //
+  // Parse analog stick state (bytes 6-13)
+  //
+  if (DataLength >= 14) {
+    INT16  OldLeftX, OldLeftY, OldRightX, OldRightY;
+    
+    // Save old values
+    OldLeftX = UsbKeyboardDevice->XboxState.LeftStickX;
+    OldLeftY = UsbKeyboardDevice->XboxState.LeftStickY;
+    OldRightX = UsbKeyboardDevice->XboxState.RightStickX;
+    OldRightY = UsbKeyboardDevice->XboxState.RightStickY;
+    
+    // Read new values (little-endian, signed 16-bit)
+    UsbKeyboardDevice->XboxState.LeftStickX = 
+      (INT16)(Report[6] | ((UINT16)Report[7] << 8));
+    UsbKeyboardDevice->XboxState.LeftStickY = 
+      (INT16)(Report[8] | ((UINT16)Report[9] << 8));
+    UsbKeyboardDevice->XboxState.RightStickX = 
+      (INT16)(Report[10] | ((UINT16)Report[11] << 8));
+    UsbKeyboardDevice->XboxState.RightStickY = 
+      (INT16)(Report[12] | ((UINT16)Report[13] << 8));
+    
+    // Process stick changes (direction keys mode)
+    ProcessStickChanges(
+      UsbKeyboardDevice,
+      OldLeftX, OldLeftY, OldRightX, OldRightY
+    );
   }
 
   UsbKeyboardDevice->RepeatKey = 0;
