@@ -3235,11 +3235,10 @@ ProcessStickChanges (
     }
     
     // Update mouse state if pointer protocol is installed
-    // Always update to maintain consistent polling rate
+    // Accumulate movement deltas to prevent losing updates between GetState calls
     if (Device->SimplePointerInstalled) {
-      Device->SimplePointerState.RelativeMovementX = DeltaX;
-      Device->SimplePointerState.RelativeMovementY = DeltaY;
-      Device->SimplePointerState.RelativeMovementZ = 0;
+      Device->SimplePointerState.RelativeMovementX += DeltaX;
+      Device->SimplePointerState.RelativeMovementY += DeltaY;
     }
   }
   
@@ -3260,8 +3259,9 @@ ProcessStickChanges (
       );
     }
     
+    // Accumulate scroll delta to prevent losing updates
     if (Device->SimplePointerInstalled) {
-      Device->SimplePointerState.RelativeMovementZ = ScrollDelta;
+      Device->SimplePointerState.RelativeMovementZ += ScrollDelta;
     }
   }
   
