@@ -33,6 +33,8 @@ jobs:
         cd edk2
         export WORKSPACE=$PWD
         export PACKAGES_PATH=$WORKSPACE
+        # Create python symlink for compatibility
+        ln -sf /usr/bin/python3 /usr/bin/python
         make -C BaseTools -j$(nproc)
         source edksetup.sh
         
