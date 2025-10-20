@@ -29,6 +29,53 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define FUNCTION_CODE_SCROLL_DOWN     0xF4  // Scroll wheel down
 
 //
+// ============================================================================
+// Advanced Logging System Configuration
+// ============================================================================
+//
+
+#define XBOX360_LOG_ENABLED         1      // Set to 0 to disable logging
+#define XBOX360_LOG_MAX_SIZE        (1024 * 1024)  // 1 MB per log file
+#define XBOX360_LOG_MAX_FILES       5      // Keep only last 5 log files
+
+#define LOG_LEVEL_INFO          0
+#define LOG_LEVEL_WARN          1
+#define LOG_LEVEL_ERROR         2
+
+//
+// Log function declarations
+//
+VOID
+EFIAPI
+Xbox360Log (
+  IN UINT8        Level,
+  IN CONST CHAR8  *Format,
+  ...
+  );
+
+VOID
+EFIAPI
+Xbox360LogCleanup (
+  VOID
+  );
+
+#if XBOX360_LOG_ENABLED
+  #define LOG_INFO(...)   Xbox360Log(LOG_LEVEL_INFO, __VA_ARGS__)
+  #define LOG_WARN(...)   Xbox360Log(LOG_LEVEL_WARN, __VA_ARGS__)
+  #define LOG_ERROR(...)  Xbox360Log(LOG_LEVEL_ERROR, __VA_ARGS__)
+#else
+  #define LOG_INFO(...)
+  #define LOG_WARN(...)
+  #define LOG_ERROR(...)
+#endif
+
+//
+// ============================================================================
+// End of Logging System Configuration
+// ============================================================================
+//
+
+//
 // Xbox 360 compatible device structure
 //
 typedef struct {

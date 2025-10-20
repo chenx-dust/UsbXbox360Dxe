@@ -43,6 +43,8 @@ USBKeyboardDriverBindingEntryPoint (
 {
   EFI_STATUS  Status;
 
+  LOG_INFO ("Xbox360 Driver Entry Point called");
+
   Status = EfiLibInstallDriverBindingComponentName2 (
              ImageHandle,
              SystemTable,
@@ -51,6 +53,13 @@ USBKeyboardDriverBindingEntryPoint (
              &gUsbKeyboardComponentName,
              &gUsbKeyboardComponentName2
              );
+  
+  if (EFI_ERROR (Status)) {
+    LOG_ERROR ("Failed to install driver binding: %r", Status);
+  } else {
+    LOG_INFO ("Driver binding installed successfully");
+  }
+
   ASSERT_EFI_ERROR (Status);
 
   return EFI_SUCCESS;
@@ -78,6 +87,8 @@ USBKeyboardDriverBindingSupported (
   EFI_STATUS           Status;
   EFI_USB_IO_PROTOCOL  *UsbIo;
 
+  LOG_INFO ("DriverBindingSupported called for controller %p", Controller);
+
   //
   // Check if USB I/O Protocol is attached on the controller handle.
   //
@@ -90,6 +101,7 @@ USBKeyboardDriverBindingSupported (
                   EFI_OPEN_PROTOCOL_BY_DRIVER
                   );
   if (EFI_ERROR (Status)) {
+    LOG_WARN ("OpenProtocol failed: %r", Status);
     return Status;
   }
 
@@ -100,6 +112,7 @@ USBKeyboardDriverBindingSupported (
   Status = EFI_SUCCESS;
 
   if (!IsUSBKeyboard (UsbIo)) {
+    LOG_INFO ("Device is not an Xbox 360 controller");
     Status = EFI_UNSUPPORTED;
   }
 
@@ -149,6 +162,8 @@ USBKeyboardDriverBindingStart (
   UINT8                        PacketSize;
   BOOLEAN                      Found;
   EFI_TPL                      OldTpl;
+
+  LOG_INFO ("DriverBindingStart called for controller %p", Controller);
 
   OldTpl = gBS->RaiseTPL (TPL_CALLBACK);
   //
