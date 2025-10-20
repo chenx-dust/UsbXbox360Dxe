@@ -1,0 +1,76 @@
+name: Build UEFI Driver
+
+on:
+  push:
+    branches: [ master, dev ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, dev ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential uuid-dev iasl git nasm python3
+        
+    - name: Clone EDK2
+      run: |
+        git clone --depth 1 --branch edk2-stable202411 https://github.com/tianocore/edk2.git
+        cd edk2
+        git submodule update --init --depth 1
+        
+    - name: Setup EDK2 environment
+      run: |
+        cd edk2
+        export WORKSPACE=$PWD
+        export PACKAGES_PATH=$WORKSPACE
+        make -C BaseTools
+        source edksetup.sh
+        
+    - name: Copy driver source to EDK2
+      run: |
+        mkdir -p edk2/MdeModulePkg/Bus/Usb/UsbXbox360Dxe
+        cp *.c *.h *.inf *.uni edk2/MdeModulePkg/Bus/Usb/UsbXbox360Dxe/
+        
+    - name: Add driver to build configuration
+      run: |
+        cd edk2
+        # Add driver to MdeModulePkg.dsc
+        sed -i '/\[Components\]/a \  MdeModulePkg/Bus/Usb/UsbXbox360Dxe/UsbXbox360Dxe.inf' MdeModulePkg/MdeModulePkg.dsc
+        
+    - name: Build driver
+      run: |
+        cd edk2
+        export WORKSPACE=$PWD
+        export PACKAGES_PATH=$WORKSPACE
+        source edksetup.sh
+        build -a X64 -t GCC5 -b RELEASE -p MdeModulePkg/MdeModulePkg.dsc -m MdeModulePkg/Bus/Usb/UsbXbox360Dxe/UsbXbox360Dxe.inf
+        
+    - name: Prepare artifact
+      run: |
+        mkdir -p output
+        cp edk2/Build/MdeModule/RELEASE_GCC5/X64/UsbXbox360Dxe.efi output/
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: UsbXbox360Dxe-${{ github.sha }}
+        path: output/UsbXbox360Dxe.efi
+        
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: output/UsbXbox360Dxe.efi
+        generate_release_notes: true
+        draft: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
