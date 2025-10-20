@@ -33,7 +33,7 @@ jobs:
         cd edk2
         export WORKSPACE=$PWD
         export PACKAGES_PATH=$WORKSPACE
-        make -C BaseTools
+        make -C BaseTools -j$(nproc) BUILD_CC_FLAGS=-Wno-error
         source edksetup.sh
         
     - name: Copy driver source to EDK2
