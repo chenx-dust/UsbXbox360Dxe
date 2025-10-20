@@ -127,6 +127,8 @@ typedef struct {
   EFI_SIMPLE_POINTER_MODE              SimplePointerMode;
   EFI_SIMPLE_POINTER_STATE             SimplePointerState;
   BOOLEAN                              SimplePointerInstalled;
+  BOOLEAN                              LastReportedLeftButton;
+  BOOLEAN                              LastReportedRightButton;
   EFI_USB_IO_PROTOCOL                  *UsbIo;
 
   EFI_USB_INTERFACE_DESCRIPTOR         InterfaceDescriptor;

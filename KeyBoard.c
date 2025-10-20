@@ -2688,6 +2688,8 @@ InitUSBKeyboard (
   //
   ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
   UsbKeyboardDevice->SimplePointerInstalled = FALSE;
+  UsbKeyboardDevice->LastReportedLeftButton = FALSE;
+  UsbKeyboardDevice->LastReportedRightButton = FALSE;
 
   return EFI_SUCCESS;
 }
@@ -4246,6 +4248,8 @@ USBKeyboardSimplePointerReset (
   // Reset pointer state
   //
   ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  UsbKeyboardDevice->LastReportedLeftButton = FALSE;
+  UsbKeyboardDevice->LastReportedRightButton = FALSE;
 
   return EFI_SUCCESS;
 }
@@ -4271,7 +4275,8 @@ USBKeyboardSimplePointerGetState (
   )
 {
   USB_KB_DEV  *UsbKeyboardDevice;
-  BOOLEAN     HasUpdate;
+  BOOLEAN     HasMovement;
+  BOOLEAN     HasButtonChange;
 
   if (State == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -4280,16 +4285,23 @@ USBKeyboardSimplePointerGetState (
   UsbKeyboardDevice = SIMPLE_POINTER_USB_KB_DEV_FROM_THIS (This);
 
   //
-  // Check if there's any update (movement OR button state)
-  // Note: We must report button state even when movement is zero
+  // Check if there's any movement (delta values)
   //
-  HasUpdate = (UsbKeyboardDevice->SimplePointerState.RelativeMovementX != 0) ||
-              (UsbKeyboardDevice->SimplePointerState.RelativeMovementY != 0) ||
-              (UsbKeyboardDevice->SimplePointerState.RelativeMovementZ != 0) ||
-              (UsbKeyboardDevice->SimplePointerState.LeftButton != FALSE) ||
-              (UsbKeyboardDevice->SimplePointerState.RightButton != FALSE);
+  HasMovement = (UsbKeyboardDevice->SimplePointerState.RelativeMovementX != 0) ||
+                (UsbKeyboardDevice->SimplePointerState.RelativeMovementY != 0) ||
+                (UsbKeyboardDevice->SimplePointerState.RelativeMovementZ != 0);
 
-  if (!HasUpdate) {
+  //
+  // Check if button state has CHANGED since last report
+  // This prevents repeated clicks when holding a button
+  //
+  HasButtonChange = (UsbKeyboardDevice->SimplePointerState.LeftButton != UsbKeyboardDevice->LastReportedLeftButton) ||
+                    (UsbKeyboardDevice->SimplePointerState.RightButton != UsbKeyboardDevice->LastReportedRightButton);
+
+  //
+  // Only report if there's movement OR button state change
+  //
+  if (!HasMovement && !HasButtonChange) {
     return EFI_NOT_READY;
   }
 
@@ -4299,13 +4311,17 @@ USBKeyboardSimplePointerGetState (
   CopyMem (State, &UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
   
   //
-  // Clear ONLY the movement deltas, preserve button states
-  // Button states will be updated by trigger/button handlers when released
+  // Clear movement deltas
   //
   UsbKeyboardDevice->SimplePointerState.RelativeMovementX = 0;
   UsbKeyboardDevice->SimplePointerState.RelativeMovementY = 0;
   UsbKeyboardDevice->SimplePointerState.RelativeMovementZ = 0;
-  // DO NOT clear LeftButton and RightButton - they represent current state
+  
+  //
+  // Update last reported button states
+  //
+  UsbKeyboardDevice->LastReportedLeftButton = UsbKeyboardDevice->SimplePointerState.LeftButton;
+  UsbKeyboardDevice->LastReportedRightButton = UsbKeyboardDevice->SimplePointerState.RightButton;
 
   return EFI_SUCCESS;
 }
