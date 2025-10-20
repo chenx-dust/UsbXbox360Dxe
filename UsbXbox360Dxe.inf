@@ -47,6 +47,7 @@
   PcdLib
   UefiUsbLib
   HiiLib
+  PrintLib
 
 [Guids]
   #
