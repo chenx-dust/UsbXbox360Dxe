@@ -28,6 +28,36 @@ LeftTrigger=0x4C          # Delete key
 RightTrigger=0x4D         # End key
 
 # ==================
+# Button Mappings (Optional)
+# ==================
+# Customize button-to-key mappings for all Xbox 360 controller buttons.
+# If not specified, the default mappings shown below are used.
+# Set to 0xFF to disable a button.
+#
+# Default Button Mappings:
+#   ButtonDpadUp=0x52          # Up Arrow
+#   ButtonDpadDown=0x51        # Down Arrow
+#   ButtonDpadLeft=0x50        # Left Arrow
+#   ButtonDpadRight=0x4F       # Right Arrow
+#   ButtonStart=0x2C           # Space
+#   ButtonBack=0x2B            # Tab
+#   ButtonLeftThumb=0xE0       # Left Control (L3)
+#   ButtonRightThumb=0xE2      # Left Alt (R3)
+#   ButtonLeftShoulder=0x4B    # Page Up (LB)
+#   ButtonRightShoulder=0x4E   # Page Down (RB)
+#   ButtonGuide=0xE1           # Left Shift (Xbox button)
+#   ButtonA=0x28               # Enter
+#   ButtonB=0x29               # Escape
+#   ButtonX=0x2A               # Backspace
+#   ButtonY=0x2B               # Tab
+#
+# Examples - Uncomment to customize:
+# ButtonA=0x29               # Swap A and B
+# ButtonB=0x28               # Swap B and A
+# ButtonDpadUp=0x1A          # W key for up
+# ButtonStart=0xFF           # Disable Start button
+
+# ==================
 # Custom Device Support
 # ==================
 # The driver includes 40+ built-in Xbox 360 compatible devices.

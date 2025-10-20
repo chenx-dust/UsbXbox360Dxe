@@ -902,13 +902,118 @@ ParseIniConfig (
         Config->RightTriggerKey = (UINT8)AsciiStrHexToUintn(Value);
       }
     }
+    // Parse button mappings
+    else if (AsciiStrCmp(Key, "ButtonDpadUp") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[0] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[0] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonDpadDown") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[1] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[1] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonDpadLeft") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[2] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[2] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonDpadRight") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[3] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[3] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonStart") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[4] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[4] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonBack") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[5] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[5] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonLeftThumb") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[6] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[6] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonRightThumb") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[7] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[7] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonLeftShoulder") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[8] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[8] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonRightShoulder") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[9] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[9] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonGuide") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[10] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[10] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonA") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[12] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[12] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonB") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[13] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[13] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonX") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[14] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[14] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
+    else if (AsciiStrCmp(Key, "ButtonY") == 0) {
+      if ((AsciiStrnCmp(Value, "0x", 2) == 0) || (AsciiStrnCmp(Value, "0X", 2) == 0)) {
+        Config->ButtonMap[15] = (UINT8)AsciiStrHexToUintn(Value + 2);
+      } else {
+        Config->ButtonMap[15] = (UINT8)AsciiStrHexToUintn(Value);
+      }
+    }
     // Parse custom devices (Device1=, Device2=, etc.)
     else if ((AsciiStrnCmp(Key, "Device", 6) == 0) && (DeviceIndex < MAX_CUSTOM_DEVICES)) {
       if (ParseDeviceString(Value, &Config->CustomDevices[DeviceIndex])) {
         DeviceIndex++;
       }
     }
-    // Button mappings (ButtonA=, ButtonB=, etc. - can be expanded later)
 
     Line = NextLine;
   }
@@ -999,6 +1104,32 @@ GenerateConfigTemplate (
     "# Trigger key mappings (USB HID scan codes)\r\n"
     "LeftTrigger=0x4C          # Delete\r\n"
     "RightTrigger=0x4D         # End\r\n"
+    "\r\n"
+    "# Button Mappings (Optional)\r\n"
+    "# Uncomment and modify to customize button mappings\r\n"
+    "# If not specified, defaults shown in comments are used\r\n"
+    "# Set to 0xFF to disable a button\r\n"
+    "#\r\n"
+    "# Default mappings:\r\n"
+    "# ButtonDpadUp=0x52          # Up Arrow\r\n"
+    "# ButtonDpadDown=0x51        # Down Arrow\r\n"
+    "# ButtonDpadLeft=0x50        # Left Arrow\r\n"
+    "# ButtonDpadRight=0x4F       # Right Arrow\r\n"
+    "# ButtonStart=0x2C           # Space\r\n"
+    "# ButtonBack=0x2B            # Tab\r\n"
+    "# ButtonLeftThumb=0xE0       # Left Control\r\n"
+    "# ButtonRightThumb=0xE2      # Left Alt\r\n"
+    "# ButtonLeftShoulder=0x4B    # Page Up\r\n"
+    "# ButtonRightShoulder=0x4E   # Page Down\r\n"
+    "# ButtonGuide=0xE1           # Left Shift\r\n"
+    "# ButtonA=0x28               # Enter\r\n"
+    "# ButtonB=0x29               # Escape\r\n"
+    "# ButtonX=0x2A               # Backspace\r\n"
+    "# ButtonY=0x2B               # Tab\r\n"
+    "#\r\n"
+    "# Example: Swap A and B buttons\r\n"
+    "# ButtonA=0x29               # Escape\r\n"
+    "# ButtonB=0x28               # Enter\r\n"
     "\r\n"
     "# Custom Device Support\r\n"
     "# Add your own Xbox 360 compatible devices here\r\n"
