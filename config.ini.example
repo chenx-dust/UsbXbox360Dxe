@@ -58,6 +58,88 @@ RightTrigger=0x4D         # End key
 # ButtonStart=0xFF           # Disable Start button
 
 # ==================
+# Analog Stick Configuration
+# ==================
+# Each stick can be configured independently for different functions.
+# Mode options: Mouse / Keys / Disabled (ONE mode per stick)
+#
+# - Mouse mode: Stick controls mouse movement (requires UEFI mouse support)
+# - Keys mode:  Stick acts as direction keys (for BIOS menus, GRUB navigation)
+# - Disabled:   Stick input is ignored
+
+# ==================
+# Left Stick (default: Keys mode)
+# ==================
+LeftStickMode=Keys
+
+# Deadzone: 0-32767, area around center that's ignored (prevents drift)
+# Recommended: 8000 for left stick, 8689 for right stick (Xbox standard)
+LeftStickDeadzone=8000
+
+# Saturation: Maximum input value (deadzone to 32767)
+# Higher values = larger input range, lower values = more sensitive
+LeftStickSaturation=32000
+
+# Keys Mode Settings (only apply when LeftStickMode=Keys)
+# --------------------------------------------------------
+# DirectionMode: 4 = 4-way (Up/Down/Left/Right only)
+#                8 = 8-way (includes diagonals like Up+Left)
+LeftStickDirectionMode=4
+
+# Direction key mappings (USB HID scan codes)
+# Uncomment to customize, or use defaults:
+# LeftStickUpMapping=0x52        # Up Arrow (default)
+# LeftStickDownMapping=0x51      # Down Arrow
+# LeftStickLeftMapping=0x50      # Left Arrow
+# LeftStickRightMapping=0x4F     # Right Arrow
+
+# Mouse Mode Settings (only apply when LeftStickMode=Mouse)
+# ----------------------------------------------------------
+# LeftStickMouseSensitivity=50   # 1-100, higher = faster (default: 50)
+# LeftStickMouseMaxSpeed=20      # Max pixels per poll (default: 20)
+# LeftStickMouseCurve=2          # Response curve:
+#                                #   1=Linear (constant speed)
+#                                #   2=Square (recommended, smooth acceleration)
+#                                #   3=S-curve (slow start, fast middle, slow end)
+
+# ==================
+# Right Stick (default: Disabled)
+# ==================
+RightStickMode=Disabled
+
+# All settings are the same as Left Stick
+# Right stick is disabled by default to avoid interference
+# Common use cases when enabled:
+#   - WASD keys for alternative navigation
+#   - Mouse control (if left stick is in Keys mode)
+#
+# Example: Enable right stick as WASD keys
+# RightStickMode=Keys
+# RightStickDeadzone=8689        # Xbox standard for right stick
+# RightStickDirectionMode=4
+# RightStickUpMapping=0x1A       # W
+# RightStickDownMapping=0x16     # S
+# RightStickLeftMapping=0x04     # A
+# RightStickRightMapping=0x07    # D
+
+# ==================
+# Common Configuration Scenarios
+# ==================
+# 1. BIOS Menu Navigation:
+#      LeftStickMode=Keys, DirectionMode=4 (default)
+#
+# 2. GRUB with Mouse Support:
+#      LeftStickMode=Mouse, MouseCurve=2
+#
+# 3. Dual Stick Navigation:
+#      LeftStickMode=Keys (Arrow keys)
+#      RightStickMode=Keys (WASD keys)
+#
+# 4. Alternative GRUB Navigation:
+#      LeftStickMode=Keys (D-pad arrows)
+#      RightStickMode=Mouse (for cursor)
+
+# ==================
 # Custom Device Support
 # ==================
 # The driver includes 40+ built-in Xbox 360 compatible devices.

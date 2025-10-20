@@ -1243,6 +1243,44 @@ ValidateAndSanitizeConfig (
     Config->CustomDeviceCount = MAX_CUSTOM_DEVICES;
   }
 
+  // Validate left stick configuration
+  if (Config->LeftStick.Mode > STICK_MODE_MOUSE) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid LeftStick mode %d, defaulting to Keys\n", Config->LeftStick.Mode));
+    Config->LeftStick.Mode = STICK_MODE_KEYS;
+  }
+  if (Config->LeftStick.Deadzone > 32767) {
+    DEBUG((DEBUG_WARN, "Xbox360: LeftStick deadzone %d out of range, clamping to 32767\n", Config->LeftStick.Deadzone));
+    Config->LeftStick.Deadzone = 32767;
+  }
+  if (Config->LeftStick.MouseSensitivity < 1 || Config->LeftStick.MouseSensitivity > 100) {
+    Config->LeftStick.MouseSensitivity = 50;
+  }
+  if (Config->LeftStick.MouseCurve < 1 || Config->LeftStick.MouseCurve > 3) {
+    Config->LeftStick.MouseCurve = 2;  // Default to square
+  }
+  if (Config->LeftStick.DirectionMode != 4 && Config->LeftStick.DirectionMode != 8) {
+    Config->LeftStick.DirectionMode = 4;  // Default to 4-way
+  }
+  
+  // Validate right stick configuration
+  if (Config->RightStick.Mode > STICK_MODE_MOUSE) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid RightStick mode %d, defaulting to Disabled\n", Config->RightStick.Mode));
+    Config->RightStick.Mode = STICK_MODE_DISABLED;
+  }
+  if (Config->RightStick.Deadzone > 32767) {
+    DEBUG((DEBUG_WARN, "Xbox360: RightStick deadzone %d out of range, clamping to 32767\n", Config->RightStick.Deadzone));
+    Config->RightStick.Deadzone = 32767;
+  }
+  if (Config->RightStick.MouseSensitivity < 1 || Config->RightStick.MouseSensitivity > 100) {
+    Config->RightStick.MouseSensitivity = 50;
+  }
+  if (Config->RightStick.MouseCurve < 1 || Config->RightStick.MouseCurve > 3) {
+    Config->RightStick.MouseCurve = 2;
+  }
+  if (Config->RightStick.DirectionMode != 4 && Config->RightStick.DirectionMode != 8) {
+    Config->RightStick.DirectionMode = 4;
+  }
+
   // Update version to current
   Config->Version = XBOX360_CONFIG_VERSION_CURRENT;
 }
@@ -1303,6 +1341,40 @@ GenerateConfigTemplate (
     "# Example: Swap A and B buttons\r\n"
     "# ButtonA=0x29               # Escape\r\n"
     "# ButtonB=0x28               # Enter\r\n"
+    "\r\n"
+    "# ==================\r\n"
+    "# Analog Stick Configuration\r\n"
+    "# ==================\r\n"
+    "# Each stick can be configured independently\r\n"
+    "# Mode: Mouse / Keys / Disabled (each stick ONE mode only)\r\n"
+    "\r\n"
+    "# Left Stick (default: Keys mode with arrow keys)\r\n"
+    "LeftStickMode=Keys\r\n"
+    "LeftStickDeadzone=8000           # Dead zone (0-32767, recommended: 8000)\r\n"
+    "LeftStickDirectionMode=4         # 4=4-way, 8=8-way diagonal support\r\n"
+    "# LeftStickUpMapping=0x52        # Up Arrow (default)\r\n"
+    "# LeftStickDownMapping=0x51      # Down Arrow\r\n"
+    "# LeftStickLeftMapping=0x50      # Left Arrow\r\n"
+    "# LeftStickRightMapping=0x4F     # Right Arrow\r\n"
+    "\r\n"
+    "# Mouse mode settings (only when LeftStickMode=Mouse)\r\n"
+    "# LeftStickMouseSensitivity=50   # Sensitivity (1-100, default: 50)\r\n"
+    "# LeftStickMouseMaxSpeed=20      # Max speed (pixels/poll, default: 20)\r\n"
+    "# LeftStickMouseCurve=2          # 1=Linear, 2=Square(recommended), 3=S-curve\r\n"
+    "\r\n"
+    "# Right Stick (default: Disabled)\r\n"
+    "RightStickMode=Disabled\r\n"
+    "# RightStickDeadzone=8689        # Xbox standard for right stick\r\n"
+    "# RightStickDirectionMode=4\r\n"
+    "# RightStickUpMapping=0x1A       # W\r\n"
+    "# RightStickDownMapping=0x16     # S\r\n"
+    "# RightStickLeftMapping=0x04     # A\r\n"
+    "# RightStickRightMapping=0x07    # D\r\n"
+    "\r\n"
+    "# Common scenarios:\r\n"
+    "# - BIOS menu: Left stick in Keys mode, Right stick Disabled\r\n"
+    "# - GRUB with mouse: Left stick in Mouse mode, Right stick Disabled or Keys\r\n"
+    "# - Gaming setup: Left stick Mouse, Right stick WASD keys\r\n"
     "\r\n"
     "# Custom Device Support\r\n"
     "# Add your own Xbox 360 compatible devices here\r\n"
