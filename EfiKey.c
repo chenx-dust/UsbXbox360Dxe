@@ -102,10 +102,12 @@ USBKeyboardDriverBindingSupported (
                   EFI_OPEN_PROTOCOL_BY_DRIVER
                   );
   if (EFI_ERROR (Status)) {
-    // This is normal - driver checks many devices
+    // This is normal - not all controllers are USB devices
     return Status;
   }
 
+  // We have a USB device, check if it's an Xbox 360 controller
+  // (IsUSBKeyboard will log the device VID/PID)
   //
   // Use the USB I/O Protocol interface to check whether Controller is
   // a keyboard device that can be managed by this driver.
@@ -115,8 +117,8 @@ USBKeyboardDriverBindingSupported (
   if (!IsUSBKeyboard (UsbIo)) {
     Status = EFI_UNSUPPORTED;
   } else {
-    // Only log when we find a matching device
-    LOG_INFO ("Xbox 360 controller detected on controller %p", Controller);
+    // Found a matching device
+    LOG_INFO ("Xbox 360 controller match confirmed, will attempt to bind driver");
   }
 
   gBS->CloseProtocol (

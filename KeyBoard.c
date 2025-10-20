@@ -2603,21 +2603,27 @@ LoadConfigWithMigration (
   }
 
   // Step 1: Set all defaults
+  LOG_INFO ("Loading configuration...");
   SetDefaultConfig(Config);
 
   // Step 2: Try to read config file
   Status = FindAndReadConfig(&ConfigData, &ConfigSize);
   if (EFI_ERROR(Status)) {
     if (Status == EFI_NOT_FOUND) {
+      LOG_INFO ("Config file not found, using defaults and generating template");
       DEBUG((DEBUG_WARN, "Xbox360: Config file not found, generating template...\n"));
       
       Status = GenerateDefaultConfigFile();
       if (!EFI_ERROR(Status)) {
+        LOG_INFO ("Config template created at \\EFI\\Xbox360\\config.ini");
         DEBUG((DEBUG_INFO, "Xbox360: Config template created at \\EFI\\Xbox360\\config.ini\n"));
         DEBUG((DEBUG_INFO, "Xbox360: Edit and reboot to customize\n"));
       } else {
+        LOG_WARN ("Could not create config file: %r (using defaults)", Status);
         DEBUG((DEBUG_WARN, "Xbox360: Could not create config file (using defaults)\n"));
       }
+    } else {
+      LOG_WARN ("Failed to read config file: %r (using defaults)", Status);
     }
     
     // Step 2.5: Always try to generate example file
@@ -2629,12 +2635,14 @@ LoadConfigWithMigration (
     }
     
     // Use defaults
+    LOG_INFO ("Configuration loaded with defaults");
     return EFI_SUCCESS;
   }
 
   // Step 3: Parse version
   FileVersion = ParseConfigVersion(ConfigData);
   
+  LOG_INFO ("Config file found, version: %d.%d", (FileVersion >> 8), (FileVersion & 0xFF));
   DEBUG((DEBUG_INFO, "Xbox360: Config file found, version: %d.%d\n",
     (FileVersion >> 8), (FileVersion & 0xFF)));
 
@@ -2654,6 +2662,7 @@ LoadConfigWithMigration (
     DEBUG((DEBUG_WARN, "Xbox360: Could not update example config (non-critical)\n"));
   }
 
+  LOG_INFO ("Configuration loaded and validated successfully");
   DEBUG((DEBUG_INFO, "Xbox360: Configuration loaded successfully\n"));
   return EFI_SUCCESS;
 }
@@ -2793,14 +2802,21 @@ IsUSBKeyboard (
 
   Status = UsbIo->UsbGetDeviceDescriptor (UsbIo, &DeviceDescriptor);
   if (EFI_ERROR (Status)) {
+    LOG_WARN ("Failed to get device descriptor: %r", Status);
     return FALSE;
   }
+
+  // Log the device being checked (important for debugging)
+  LOG_INFO ("Checking USB device: VID:0x%04X PID:0x%04X", 
+            DeviceDescriptor.IdVendor, 
+            DeviceDescriptor.IdProduct);
 
   // Initialize device list if not already done
   if (!mDeviceListInitialized) {
     // Use built-in devices only as fallback
     mXbox360DeviceList = (XBOX360_COMPATIBLE_DEVICE*)mXbox360BuiltinDevices;
     mXbox360DeviceCount = XBOX360_BUILTIN_DEVICE_COUNT;
+    LOG_INFO ("Device list initialized with %d built-in devices", (UINT32)mXbox360DeviceCount);
   }
 
   //
@@ -2828,7 +2844,10 @@ IsUSBKeyboard (
     }
   }
 
-  // Not a match - don't log every non-matching device to reduce noise
+  // Log when device doesn't match (important for debugging)
+  LOG_INFO ("Device VID:0x%04X PID:0x%04X does not match any known Xbox 360 controller",
+            DeviceDescriptor.IdVendor,
+            DeviceDescriptor.IdProduct);
   return FALSE;
 }
 
