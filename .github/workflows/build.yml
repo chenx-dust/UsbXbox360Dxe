@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
     
     steps:
     - name: Checkout repository
