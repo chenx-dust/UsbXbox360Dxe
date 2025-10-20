@@ -2890,6 +2890,7 @@ CalculateMouseMovement (
   Speed = (Curved * Config->MouseSensitivity * Config->MouseMaxSpeed) / 
           (10000 * 100);
   
+  // Ensure minimum movement when curved input is non-zero
   if (Speed < 1 && Curved > 0) {
     Speed = 1;  // Minimum movement
   }
@@ -2910,6 +2911,20 @@ CalculateMouseMovement (
     DeltaX = (X != 0) ? ((Speed * AbsX) / AbsY) : 0;
     if (X < 0) {
       DeltaX = -DeltaX;
+    }
+  }
+  
+  //
+  // Ensure at least 1 pixel movement to maintain polling rate
+  // This prevents choppy movement when stick is just outside deadzone
+  //
+  if (DeltaX == 0 && DeltaY == 0 && Magnitude >= Config->Deadzone) {
+    // Stick is outside deadzone but calculated movement is zero
+    // Set minimum movement in primary direction to maintain smooth polling
+    if (AbsX > AbsY) {
+      DeltaX = (X > 0) ? 1 : -1;
+    } else {
+      DeltaY = (Y > 0) ? -1 : 1;
     }
   }
   
@@ -3218,7 +3233,8 @@ ProcessStickChanges (
     }
     
     // Update mouse state if pointer protocol is installed
-    if (Device->SimplePointerInstalled && (DeltaX != 0 || DeltaY != 0)) {
+    // Always update to maintain consistent polling rate
+    if (Device->SimplePointerInstalled) {
       Device->SimplePointerState.RelativeMovementX = DeltaX;
       Device->SimplePointerState.RelativeMovementY = DeltaY;
       Device->SimplePointerState.RelativeMovementZ = 0;
@@ -3246,6 +3262,16 @@ ProcessStickChanges (
       Device->SimplePointerState.RelativeMovementZ = ScrollDelta;
     }
   }
+  
+  //
+  // Workaround to maintain consistent polling rate:
+  // If in mouse/scroll mode but all deltas are zero, report EFI_NOT_READY
+  // will cause system to reduce polling frequency, making movement choppy.
+  // Solution: When button is pressed, it naturally maintains polling via HasUpdate.
+  // When button is not pressed, we rely on the movement deltas being reported.
+  // The key is that CalculateMouseMovement should return non-zero when stick
+  // is outside deadzone, which is already handled by "Speed = 1" minimum.
+  //
 }
 
 /**
