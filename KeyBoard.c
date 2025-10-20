@@ -1403,6 +1403,78 @@ TryWriteConfigToVolume (
 }
 
 /**
+  Try to write example config file to a specific volume.
+
+  @param  FileSystem  File system protocol instance.
+
+  @retval EFI_SUCCESS  Example file written successfully.
+  @retval Other        Error writing file.
+**/
+STATIC
+EFI_STATUS
+TryWriteExampleToVolume (
+  IN EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem
+  )
+{
+  EFI_STATUS         Status;
+  EFI_FILE_PROTOCOL  *Root;
+  EFI_FILE_PROTOCOL  *Dir;
+  EFI_FILE_PROTOCOL  *ExampleFile;
+  CHAR8              *ConfigTemplate;
+  UINTN              ConfigSize;
+
+  if (FileSystem == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  Status = FileSystem->OpenVolume(FileSystem, &Root);
+  if (EFI_ERROR(Status)) {
+    return Status;
+  }
+
+  // Try to open Xbox360 directory (assume it exists)
+  Status = Root->Open(
+    Root,
+    &Dir,
+    L"EFI\\Xbox360",
+    EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE,
+    EFI_FILE_DIRECTORY
+  );
+
+  if (EFI_ERROR(Status)) {
+    Root->Close(Root);
+    return Status;
+  }
+
+  // Create/overwrite example file
+  Status = Dir->Open(
+    Dir,
+    &ExampleFile,
+    L"config.ini.example",
+    EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE,
+    0
+  );
+
+  Dir->Close(Dir);
+
+  if (EFI_ERROR(Status)) {
+    Root->Close(Root);
+    return Status;
+  }
+
+  // Write config template
+  ConfigTemplate = GenerateConfigTemplate();
+  ConfigSize = AsciiStrLen(ConfigTemplate);
+
+  Status = ExampleFile->Write(ExampleFile, &ConfigSize, ConfigTemplate);
+
+  ExampleFile->Close(ExampleFile);
+  Root->Close(Root);
+
+  return Status;
+}
+
+/**
   Generate default configuration file on first run.
 
   @retval EFI_SUCCESS  Config file created successfully.
@@ -1456,6 +1528,62 @@ GenerateDefaultConfigFile (
 }
 
 /**
+  Generate example configuration file.
+  Tries to write config.ini.example to all available ESP partitions.
+  Non-critical operation - failure does not affect driver functionality.
+
+  @retval EFI_SUCCESS  Example file created successfully.
+  @retval Other        Error creating file (non-critical).
+**/
+STATIC
+EFI_STATUS
+GenerateExampleFile (
+  VOID
+  )
+{
+  EFI_STATUS                       Status;
+  EFI_HANDLE                       *HandleBuffer;
+  UINTN                            HandleCount;
+  UINTN                            Index;
+  EFI_SIMPLE_FILE_SYSTEM_PROTOCOL  *FileSystem;
+
+  // Locate all file system handles
+  Status = gBS->LocateHandleBuffer(
+    ByProtocol,
+    &gEfiSimpleFileSystemProtocolGuid,
+    NULL,
+    &HandleCount,
+    &HandleBuffer
+  );
+
+  if (EFI_ERROR(Status)) {
+    return Status;
+  }
+
+  // Try each file system until successful
+  for (Index = 0; Index < HandleCount; Index++) {
+    Status = gBS->HandleProtocol(
+      HandleBuffer[Index],
+      &gEfiSimpleFileSystemProtocolGuid,
+      (VOID**)&FileSystem
+    );
+
+    if (!EFI_ERROR(Status)) {
+      Status = TryWriteExampleToVolume(FileSystem);
+      if (!EFI_ERROR(Status)) {
+        // Successfully created example file
+        FreePool(HandleBuffer);
+        return EFI_SUCCESS;
+      }
+    }
+  }
+
+  FreePool(HandleBuffer);
+  // Return success even if we failed - this is non-critical
+  return EFI_SUCCESS;
+}
+
+/**
   Load configuration with version migration support.
 
   @param  Config  Pointer to configuration structure to populate.
@@ -1495,6 +1623,14 @@ LoadConfigWithMigration (
       }
     }
     
+    // Step 2.5: Always try to generate example file
+    Status = GenerateExampleFile();
+    if (!EFI_ERROR(Status)) {
+      DEBUG((DEBUG_INFO, "Xbox360: Example config updated at \\EFI\\Xbox360\\config.ini.example\n"));
+    } else {
+      DEBUG((DEBUG_WARN, "Xbox360: Could not update example config (non-critical)\n"));
+    }
+    
     // Use defaults
     return EFI_SUCCESS;
   }
@@ -1512,6 +1648,14 @@ LoadConfigWithMigration (
   ValidateAndSanitizeConfig(Config);
 
   FreePool(ConfigData);
+
+  // Step 6: Always try to generate example file
+  Status = GenerateExampleFile();
+  if (!EFI_ERROR(Status)) {
+    DEBUG((DEBUG_INFO, "Xbox360: Example config updated at \\EFI\\Xbox360\\config.ini.example\n"));
+  } else {
+    DEBUG((DEBUG_WARN, "Xbox360: Could not update example config (non-critical)\n"));
+  }
 
   DEBUG((DEBUG_INFO, "Xbox360: Configuration loaded successfully\n"));
   return EFI_SUCCESS;
