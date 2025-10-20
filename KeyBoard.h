@@ -29,17 +29,51 @@ typedef struct {
 } XBOX360_COMPATIBLE_DEVICE;
 
 //
+// Analog stick mode
+//
+typedef enum {
+  STICK_MODE_DISABLED = 0,
+  STICK_MODE_KEYS = 1,
+  STICK_MODE_MOUSE = 2
+} STICK_MODE;
+
+//
+// Single stick configuration
+//
+typedef struct {
+  UINT8    Mode;              // STICK_MODE
+  UINT16   Deadzone;          // Deadzone (0-32767)
+  UINT16   Saturation;        // Saturation value (deadzone-32767)
+  
+  // Mouse mode settings
+  UINT8    MouseSensitivity;  // Sensitivity (1-100)
+  UINT8    MouseMaxSpeed;     // Max speed (pixels per poll)
+  UINT8    MouseCurve;        // Response curve: 1=Linear, 2=Square, 3=S-curve
+  
+  // Keys mode settings
+  UINT8    DirectionMode;     // 4=4-way, 8=8-way
+  UINT8    UpMapping;         // Up key
+  UINT8    DownMapping;       // Down key
+  UINT8    LeftMapping;       // Left key
+  UINT8    RightMapping;      // Right key
+  
+  UINT8    Reserved[8];       // Reserved for future use
+} STICK_CONFIG;
+
+//
 // Xbox 360 Configuration Structure
 //
 typedef struct {
   UINT16                       Version;              // Config format version
-  UINT16                       StickDeadzone;        // Analog stick deadzone (0-32767)
+  UINT16                       StickDeadzone;        // Global stick deadzone (0-32767, deprecated, use per-stick config)
   UINT8                        TriggerThreshold;     // Trigger activation threshold (0-255)
   UINT8                        LeftTriggerKey;       // Left trigger key mapping
   UINT8                        RightTriggerKey;      // Right trigger key mapping
   UINT8                        ButtonMap[16];        // Button to key mappings
   UINTN                        CustomDeviceCount;    // Number of custom devices
   XBOX360_COMPATIBLE_DEVICE    CustomDevices[MAX_CUSTOM_DEVICES]; // Custom device list
+  STICK_CONFIG                 LeftStick;            // Left analog stick configuration
+  STICK_CONFIG                 RightStick;           // Right analog stick configuration
   UINT8                        Reserved[32];         // Reserved for future expansion
 } XBOX360_CONFIG;
 

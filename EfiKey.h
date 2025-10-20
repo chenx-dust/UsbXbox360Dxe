@@ -96,10 +96,20 @@ typedef struct {
 
 typedef struct {
   UINT16   Buttons;
-  INT8     LeftStickXDir;
-  INT8     LeftStickYDir;
   BOOLEAN  LeftTriggerActive;
   BOOLEAN  RightTriggerActive;
+  
+  // Left stick raw values
+  INT16    LeftStickX;        // -32768 ~ 32767
+  INT16    LeftStickY;        // -32768 ~ 32767
+  
+  // Right stick raw values
+  INT16    RightStickX;
+  INT16    RightStickY;
+  
+  // Processed stick direction states (for Keys mode)
+  UINT8    LeftStickDir;      // BIT0=Up, BIT1=Down, BIT2=Left, BIT3=Right
+  UINT8    RightStickDir;
 } XBOX360_INPUT_STATE;
 
 ///

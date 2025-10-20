@@ -29,6 +29,14 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define XBOX360_BUTTON_Y               BIT15
 
 //
+// Analog stick direction bit definitions
+//
+#define STICK_DIR_UP       BIT0
+#define STICK_DIR_DOWN     BIT1
+#define STICK_DIR_LEFT     BIT2
+#define STICK_DIR_RIGHT    BIT3
+
+//
 // Known Xbox 360 protocol compatible devices
 // All devices verified against Linux kernel xpad driver (XTYPE_XBOX360)
 // Reference: linux/drivers/input/joystick/xpad.c
