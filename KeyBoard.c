@@ -772,8 +772,9 @@ SetDefaultConfig (
   Config->Version = XBOX360_CONFIG_VERSION_CURRENT;
   Config->StickDeadzone = 8000;
   Config->TriggerThreshold = 128;
-  Config->LeftTriggerKey = 0x4C;   // Delete
-  Config->RightTriggerKey = 0x4D;  // End
+  // Trigger key mappings - Default to mouse buttons for better mouse mode experience
+  Config->LeftTriggerKey = FUNCTION_CODE_MOUSE_RIGHT;   // 0xF1 - Mouse Right Button
+  Config->RightTriggerKey = FUNCTION_CODE_MOUSE_LEFT;   // 0xF0 - Mouse Left Button
 
   // Default button mappings (from existing mXbox360ButtonMap)
   Config->ButtonMap[0] = 0x52;   // DPAD_UP -> Up Arrow
@@ -795,8 +796,8 @@ SetDefaultConfig (
 
   Config->CustomDeviceCount = 0;
   
-  // Left stick defaults: Keys mode with 4-way direction mapping
-  Config->LeftStick.Mode = STICK_MODE_KEYS;
+  // Left stick defaults: Mouse mode for cursor control
+  Config->LeftStick.Mode = STICK_MODE_MOUSE;
   Config->LeftStick.Deadzone = 8000;
   Config->LeftStick.Saturation = 32000;
   Config->LeftStick.MouseSensitivity = 50;
@@ -808,8 +809,8 @@ SetDefaultConfig (
   Config->LeftStick.LeftMapping = 0x50;  // Left Arrow
   Config->LeftStick.RightMapping = 0x4F; // Right Arrow
   
-  // Right stick defaults: Disabled
-  Config->RightStick.Mode = STICK_MODE_DISABLED;
+  // Right stick defaults: Scroll mode (vertical only)
+  Config->RightStick.Mode = STICK_MODE_SCROLL;
   Config->RightStick.Deadzone = 8689;  // Xbox standard for right stick
   Config->RightStick.Saturation = 32000;
   Config->RightStick.MouseSensitivity = 50;
@@ -820,6 +821,12 @@ SetDefaultConfig (
   Config->RightStick.DownMapping = 0x16;  // S
   Config->RightStick.LeftMapping = 0x04;  // A
   Config->RightStick.RightMapping = 0x07; // D
+  Config->RightStick.ScrollSensitivity = 30;  // Medium sensitivity
+  Config->RightStick.ScrollDeadzone = 0;      // Use standard deadzone
+  
+  // Left stick scroll settings (if user switches to scroll mode)
+  Config->LeftStick.ScrollSensitivity = 30;
+  Config->LeftStick.ScrollDeadzone = 0;
 }
 
 /**
@@ -1081,6 +1088,8 @@ ParseIniConfig (
         Config->LeftStick.Mode = STICK_MODE_MOUSE;
       } else if (AsciiStrCmp(Value, "Keys") == 0 || AsciiStrCmp(Value, "keys") == 0) {
         Config->LeftStick.Mode = STICK_MODE_KEYS;
+      } else if (AsciiStrCmp(Value, "Scroll") == 0 || AsciiStrCmp(Value, "scroll") == 0) {
+        Config->LeftStick.Mode = STICK_MODE_SCROLL;
       } else if (AsciiStrCmp(Value, "Disabled") == 0 || AsciiStrCmp(Value, "disabled") == 0) {
         Config->LeftStick.Mode = STICK_MODE_DISABLED;
       }
@@ -1137,6 +1146,8 @@ ParseIniConfig (
         Config->RightStick.Mode = STICK_MODE_MOUSE;
       } else if (AsciiStrCmp(Value, "Keys") == 0 || AsciiStrCmp(Value, "keys") == 0) {
         Config->RightStick.Mode = STICK_MODE_KEYS;
+      } else if (AsciiStrCmp(Value, "Scroll") == 0 || AsciiStrCmp(Value, "scroll") == 0) {
+        Config->RightStick.Mode = STICK_MODE_SCROLL;
       } else if (AsciiStrCmp(Value, "Disabled") == 0 || AsciiStrCmp(Value, "disabled") == 0) {
         Config->RightStick.Mode = STICK_MODE_DISABLED;
       }
@@ -1187,6 +1198,13 @@ ParseIniConfig (
         Config->RightStick.RightMapping = (UINT8)AsciiStrHexToUintn(Value);
       }
     }
+    // Parse scroll sensitivity for both sticks
+    else if (AsciiStrCmp(Key, "LeftStickScrollSensitivity") == 0) {
+      Config->LeftStick.ScrollSensitivity = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
+    else if (AsciiStrCmp(Key, "RightStickScrollSensitivity") == 0) {
+      Config->RightStick.ScrollSensitivity = (UINT8)AsciiStrDecimalToUintn(Value);
+    }
 
     Line = NextLine;
   }
@@ -1217,20 +1235,32 @@ ValidateAndSanitizeConfig (
     Config->StickDeadzone = 32767;
   }
 
-  // Validate trigger keys (USB HID scan codes should be <= 0xE7)
-  if ((Config->LeftTriggerKey > 0xE7) && (Config->LeftTriggerKey != 0xFF)) {
+  // Validate trigger keys (USB HID scan codes <= 0xE7, function codes 0xF0-0xF4, or 0xFF for disabled)
+  if ((Config->LeftTriggerKey > 0xE7) && (Config->LeftTriggerKey < 0xF0) && (Config->LeftTriggerKey != 0xFF)) {
     DEBUG((DEBUG_WARN, "Xbox360: Invalid LeftTriggerKey 0x%02X, using default\n", Config->LeftTriggerKey));
-    Config->LeftTriggerKey = 0x4C;
+    Config->LeftTriggerKey = FUNCTION_CODE_MOUSE_RIGHT;
+  }
+  if ((Config->LeftTriggerKey > 0xF4) && (Config->LeftTriggerKey != 0xFF)) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid LeftTriggerKey 0x%02X, using default\n", Config->LeftTriggerKey));
+    Config->LeftTriggerKey = FUNCTION_CODE_MOUSE_RIGHT;
   }
 
-  if ((Config->RightTriggerKey > 0xE7) && (Config->RightTriggerKey != 0xFF)) {
+  if ((Config->RightTriggerKey > 0xE7) && (Config->RightTriggerKey < 0xF0) && (Config->RightTriggerKey != 0xFF)) {
     DEBUG((DEBUG_WARN, "Xbox360: Invalid RightTriggerKey 0x%02X, using default\n", Config->RightTriggerKey));
-    Config->RightTriggerKey = 0x4D;
+    Config->RightTriggerKey = FUNCTION_CODE_MOUSE_LEFT;
+  }
+  if ((Config->RightTriggerKey > 0xF4) && (Config->RightTriggerKey != 0xFF)) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid RightTriggerKey 0x%02X, using default\n", Config->RightTriggerKey));
+    Config->RightTriggerKey = FUNCTION_CODE_MOUSE_LEFT;
   }
 
-  // Validate button mappings
+  // Validate button mappings (USB HID codes <= 0xE7, function codes 0xF0-0xF4, or 0xFF for disabled)
   for (i = 0; i < 16; i++) {
-    if ((Config->ButtonMap[i] > 0xE7) && (Config->ButtonMap[i] != 0xFF)) {
+    if ((Config->ButtonMap[i] > 0xE7) && (Config->ButtonMap[i] < 0xF0) && (Config->ButtonMap[i] != 0xFF)) {
+      DEBUG((DEBUG_WARN, "Xbox360: Invalid scan code 0x%02X for button %d, disabling\n", Config->ButtonMap[i], i));
+      Config->ButtonMap[i] = 0xFF;
+    }
+    if ((Config->ButtonMap[i] > 0xF4) && (Config->ButtonMap[i] != 0xFF)) {
       DEBUG((DEBUG_WARN, "Xbox360: Invalid scan code 0x%02X for button %d, disabling\n", Config->ButtonMap[i], i));
       Config->ButtonMap[i] = 0xFF;
     }
@@ -1244,7 +1274,7 @@ ValidateAndSanitizeConfig (
   }
 
   // Validate left stick configuration
-  if (Config->LeftStick.Mode > STICK_MODE_MOUSE) {
+  if (Config->LeftStick.Mode > STICK_MODE_SCROLL) {
     DEBUG((DEBUG_WARN, "Xbox360: Invalid LeftStick mode %d, defaulting to Keys\n", Config->LeftStick.Mode));
     Config->LeftStick.Mode = STICK_MODE_KEYS;
   }
@@ -1263,9 +1293,9 @@ ValidateAndSanitizeConfig (
   }
   
   // Validate right stick configuration
-  if (Config->RightStick.Mode > STICK_MODE_MOUSE) {
-    DEBUG((DEBUG_WARN, "Xbox360: Invalid RightStick mode %d, defaulting to Disabled\n", Config->RightStick.Mode));
-    Config->RightStick.Mode = STICK_MODE_DISABLED;
+  if (Config->RightStick.Mode > STICK_MODE_SCROLL) {
+    DEBUG((DEBUG_WARN, "Xbox360: Invalid RightStick mode %d, defaulting to Scroll\n", Config->RightStick.Mode));
+    Config->RightStick.Mode = STICK_MODE_SCROLL;
   }
   if (Config->RightStick.Deadzone > 32767) {
     DEBUG((DEBUG_WARN, "Xbox360: RightStick deadzone %d out of range, clamping to 32767\n", Config->RightStick.Deadzone));
@@ -1279,6 +1309,14 @@ ValidateAndSanitizeConfig (
   }
   if (Config->RightStick.DirectionMode != 4 && Config->RightStick.DirectionMode != 8) {
     Config->RightStick.DirectionMode = 4;
+  }
+
+  // Validate scroll sensitivity
+  if (Config->LeftStick.ScrollSensitivity < 1 || Config->LeftStick.ScrollSensitivity > 100) {
+    Config->LeftStick.ScrollSensitivity = 30;
+  }
+  if (Config->RightStick.ScrollSensitivity < 1 || Config->RightStick.ScrollSensitivity > 100) {
+    Config->RightStick.ScrollSensitivity = 30;
   }
 
   // Update version to current
@@ -1312,9 +1350,22 @@ GenerateConfigTemplate (
     "# TriggerThreshold: 0-255 (default: 128)\r\n"
     "TriggerThreshold=128\r\n"
     "\r\n"
-    "# Trigger key mappings (USB HID scan codes)\r\n"
-    "LeftTrigger=0x4C          # Delete\r\n"
-    "RightTrigger=0x4D         # End\r\n"
+    "# Trigger key mappings (USB HID scan codes or mouse functions)\r\n"
+    "# Mouse function codes:\r\n"
+    "#   0xF0 = Mouse Left Button\r\n"
+    "#   0xF1 = Mouse Right Button\r\n"
+    "#   0xF2 = Mouse Middle Button (reserved)\r\n"
+    "#   0xF3 = Scroll Wheel Up\r\n"
+    "#   0xF4 = Scroll Wheel Down\r\n"
+    "# Keyboard key codes: 0x00-0xE7 (see USB HID spec)\r\n"
+    "\r\n"
+    "# Default: Triggers as mouse buttons (recommended for mouse mode)\r\n"
+    "RightTrigger=0xF0         # Mouse Left Button\r\n"
+    "LeftTrigger=0xF1          # Mouse Right Button\r\n"
+    "\r\n"
+    "# Alternative: Use as keyboard keys\r\n"
+    "# RightTrigger=0x4D        # End key\r\n"
+    "# LeftTrigger=0x4C         # Delete key\r\n"
     "\r\n"
     "# Button Mappings (Optional)\r\n"
     "# Uncomment and modify to customize button mappings\r\n"
@@ -1348,33 +1399,44 @@ GenerateConfigTemplate (
     "# Each stick can be configured independently\r\n"
     "# Mode: Mouse / Keys / Disabled (each stick ONE mode only)\r\n"
     "\r\n"
-    "# Left Stick (default: Keys mode with arrow keys)\r\n"
-    "LeftStickMode=Keys\r\n"
+    "# Left Stick (default: Mouse mode for cursor control)\r\n"
+    "LeftStickMode=Mouse\r\n"
     "LeftStickDeadzone=8000           # Dead zone (0-32767, recommended: 8000)\r\n"
-    "LeftStickDirectionMode=4         # 4=4-way, 8=8-way diagonal support\r\n"
-    "# LeftStickUpMapping=0x52        # Up Arrow (default)\r\n"
+    "LeftStickMouseSensitivity=50     # Sensitivity (1-100, default: 50)\r\n"
+    "LeftStickMouseMaxSpeed=20        # Max speed (pixels/poll, default: 20)\r\n"
+    "LeftStickMouseCurve=2            # 1=Linear, 2=Square(recommended), 3=S-curve\r\n"
+    "\r\n"
+    "# Keys mode settings (only when LeftStickMode=Keys)\r\n"
+    "# LeftStickDirectionMode=4       # 4=4-way, 8=8-way diagonal support\r\n"
+    "# LeftStickUpMapping=0x52        # Up Arrow\r\n"
     "# LeftStickDownMapping=0x51      # Down Arrow\r\n"
     "# LeftStickLeftMapping=0x50      # Left Arrow\r\n"
     "# LeftStickRightMapping=0x4F     # Right Arrow\r\n"
     "\r\n"
-    "# Mouse mode settings (only when LeftStickMode=Mouse)\r\n"
-    "# LeftStickMouseSensitivity=50   # Sensitivity (1-100, default: 50)\r\n"
-    "# LeftStickMouseMaxSpeed=20      # Max speed (pixels/poll, default: 20)\r\n"
-    "# LeftStickMouseCurve=2          # 1=Linear, 2=Square(recommended), 3=S-curve\r\n"
+    "# Right Stick (default: Scroll mode)\r\n"
+    "RightStickMode=Scroll\r\n"
+    "RightStickScrollSensitivity=30   # 1-100, higher = faster scroll\r\n"
+    "# RightStickDeadzone=8689         # Xbox standard for right stick\r\n"
     "\r\n"
-    "# Right Stick (default: Disabled)\r\n"
-    "RightStickMode=Disabled\r\n"
-    "# RightStickDeadzone=8689        # Xbox standard for right stick\r\n"
-    "# RightStickDirectionMode=4\r\n"
-    "# RightStickUpMapping=0x1A       # W\r\n"
-    "# RightStickDownMapping=0x16     # S\r\n"
-    "# RightStickLeftMapping=0x04     # A\r\n"
-    "# RightStickRightMapping=0x07    # D\r\n"
+    "# Alternative: Use as direction keys\r\n"
+    "# RightStickMode=Keys\r\n"
+    "# RightStickDirectionMode=4       # 4=4-way, 8=8-way\r\n"
+    "# RightStickUpMapping=0x1A        # W\r\n"
+    "# RightStickDownMapping=0x16      # S\r\n"
+    "# RightStickLeftMapping=0x04      # A\r\n"
+    "# RightStickRightMapping=0x07     # D\r\n"
+    "\r\n"
+    "# Alternative: Disable right stick\r\n"
+    "# RightStickMode=Disabled\r\n"
     "\r\n"
     "# Common scenarios:\r\n"
-    "# - BIOS menu: Left stick in Keys mode, Right stick Disabled\r\n"
-    "# - GRUB with mouse: Left stick in Mouse mode, Right stick Disabled or Keys\r\n"
-    "# - Gaming setup: Left stick Mouse, Right stick WASD keys\r\n"
+    "# - Complete mouse control (default):\r\n"
+    "#     LeftStickMode=Mouse, RightStickMode=Scroll\r\n"
+    "#     RightTrigger=0xF0 (left click), LeftTrigger=0xF1 (right click)\r\n"
+    "# - BIOS/GRUB navigation:\r\n"
+    "#     LeftStickMode=Keys, RightStickMode=Disabled\r\n"
+    "# - Dual stick control:\r\n"
+    "#     LeftStickMode=Keys (arrows), RightStickMode=Keys (WASD)\r\n"
     "\r\n"
     "# Custom Device Support\r\n"
     "# Add your own Xbox 360 compatible devices here\r\n"
@@ -2613,13 +2675,13 @@ InitUSBKeyboard (
   UsbKeyboardDevice->SimplePointer.Mode      = &UsbKeyboardDevice->SimplePointerMode;
   
   //
-  // Initialize pointer mode (relative movement, no button support)
+  // Initialize pointer mode (relative movement with button and scroll support)
   //
   UsbKeyboardDevice->SimplePointerMode.ResolutionX     = 1;
   UsbKeyboardDevice->SimplePointerMode.ResolutionY     = 1;
-  UsbKeyboardDevice->SimplePointerMode.ResolutionZ     = 0;
-  UsbKeyboardDevice->SimplePointerMode.LeftButton      = FALSE;
-  UsbKeyboardDevice->SimplePointerMode.RightButton     = FALSE;
+  UsbKeyboardDevice->SimplePointerMode.ResolutionZ     = 1;
+  UsbKeyboardDevice->SimplePointerMode.LeftButton      = TRUE;
+  UsbKeyboardDevice->SimplePointerMode.RightButton     = TRUE;
   
   //
   // Initialize pointer state
@@ -2663,6 +2725,7 @@ ProcessButtonChanges (
     UINT16   Mask;
     BOOLEAN  WasPressed;
     BOOLEAN  IsPressed;
+    UINT8    KeyMapping;
 
     Mask       = mXbox360ButtonMap[Index].ButtonMask;
     WasPressed = ((OldButtons & Mask) != 0);
@@ -2672,11 +2735,23 @@ ProcessButtonChanges (
       continue;
     }
 
-    QueueButtonTransition (
-      UsbKeyboardDevice,
-      mXbox360ButtonMap[Index].UsbKeyCode,
-      IsPressed
-      );
+    KeyMapping = mXbox360ButtonMap[Index].UsbKeyCode;
+    
+    // Check if this is a mouse button function code
+    if (KeyMapping == FUNCTION_CODE_MOUSE_LEFT && UsbKeyboardDevice->SimplePointerInstalled) {
+      UsbKeyboardDevice->SimplePointerState.LeftButton = IsPressed;
+    } else if (KeyMapping == FUNCTION_CODE_MOUSE_RIGHT && UsbKeyboardDevice->SimplePointerInstalled) {
+      UsbKeyboardDevice->SimplePointerState.RightButton = IsPressed;
+    } else if (KeyMapping == FUNCTION_CODE_MOUSE_MIDDLE && UsbKeyboardDevice->SimplePointerInstalled) {
+      // Middle button support (reserved for future)
+    } else if (KeyMapping != 0xFF) {
+      // Standard keyboard key
+      QueueButtonTransition (
+        UsbKeyboardDevice,
+        KeyMapping,
+        IsPressed
+        );
+    }
   }
 }
 
@@ -2838,6 +2913,63 @@ CalculateMouseMovement (
   
   *OutDeltaX = DeltaX;
   *OutDeltaY = DeltaY;
+}
+
+/**
+  Calculate scroll delta from stick Y-axis input.
+  
+  @param  Y           Stick Y-axis value (-32768 ~ 32767)
+  @param  Config      Stick configuration
+  
+  @return Scroll delta (negative = down, positive = up)
+**/
+STATIC
+INT32
+CalculateScrollDelta (
+  IN INT16         Y,
+  IN STICK_CONFIG  *Config
+  )
+{
+  INT32  AbsY;
+  INT32  Magnitude;
+  INT32  Normalized;
+  INT32  ScrollDelta;
+  
+  if (Config == NULL) {
+    return 0;
+  }
+  
+  AbsY = (Y < 0) ? -Y : Y;
+  
+  // Check deadzone
+  if (AbsY < Config->Deadzone) {
+    return 0;
+  }
+  
+  // Normalize to 0-100
+  Magnitude = AbsY;
+  if (Magnitude > Config->Saturation) {
+    Magnitude = Config->Saturation;
+  }
+  
+  Normalized = ((Magnitude - Config->Deadzone) * 100) / 
+               (Config->Saturation - Config->Deadzone);
+  
+  // Apply sensitivity (1-100)
+  ScrollDelta = (Normalized * Config->ScrollSensitivity) / 100;
+  
+  // Minimum scroll delta
+  if (ScrollDelta < 1) {
+    ScrollDelta = 1;
+  }
+  
+  // Maximum scroll delta (prevent excessive scrolling)
+  if (ScrollDelta > 10) {
+    ScrollDelta = 10;
+  }
+  
+  // Return with direction (Y positive = up)
+  return (Y > 0) ? ScrollDelta : -ScrollDelta;
 }
 
 /**
@@ -3090,6 +3222,28 @@ ProcessStickChanges (
       Device->SimplePointerState.RelativeMovementZ = 0;
     }
   }
+  
+  // Process scroll mode for either stick
+  if (mGlobalConfig.LeftStick.Mode == STICK_MODE_SCROLL ||
+      mGlobalConfig.RightStick.Mode == STICK_MODE_SCROLL) {
+    INT32  ScrollDelta = 0;
+    
+    if (mGlobalConfig.LeftStick.Mode == STICK_MODE_SCROLL) {
+      ScrollDelta = CalculateScrollDelta(
+        Device->XboxState.LeftStickY,
+        &mGlobalConfig.LeftStick
+      );
+    } else if (mGlobalConfig.RightStick.Mode == STICK_MODE_SCROLL) {
+      ScrollDelta = CalculateScrollDelta(
+        Device->XboxState.RightStickY,
+        &mGlobalConfig.RightStick
+      );
+    }
+    
+    if (Device->SimplePointerInstalled) {
+      Device->SimplePointerState.RelativeMovementZ = ScrollDelta;
+    }
+  }
 }
 
 /**
@@ -3227,10 +3381,21 @@ KeyboardHandler (
 
     // Handle left trigger state change
     if (LeftTriggerPressed != OldLeftTrigger) {
-      if (mGlobalConfig.LeftTriggerKey != 0xFF) {
+      UINT8 LeftTriggerMapping = mGlobalConfig.LeftTriggerKey;
+      
+      if (LeftTriggerMapping == FUNCTION_CODE_MOUSE_LEFT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.LeftButton = LeftTriggerPressed;
+        }
+      } else if (LeftTriggerMapping == FUNCTION_CODE_MOUSE_RIGHT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.RightButton = LeftTriggerPressed;
+        }
+      } else if (LeftTriggerMapping != 0xFF) {
+        // Standard keyboard key
         QueueButtonTransition(
           UsbKeyboardDevice,
-          mGlobalConfig.LeftTriggerKey,
+          LeftTriggerMapping,
           LeftTriggerPressed
         );
       }
@@ -3239,10 +3404,21 @@ KeyboardHandler (
 
     // Handle right trigger state change
     if (RightTriggerPressed != OldRightTrigger) {
-      if (mGlobalConfig.RightTriggerKey != 0xFF) {
+      UINT8 RightTriggerMapping = mGlobalConfig.RightTriggerKey;
+      
+      if (RightTriggerMapping == FUNCTION_CODE_MOUSE_LEFT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.LeftButton = RightTriggerPressed;
+        }
+      } else if (RightTriggerMapping == FUNCTION_CODE_MOUSE_RIGHT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.RightButton = RightTriggerPressed;
+        }
+      } else if (RightTriggerMapping != 0xFF) {
+        // Standard keyboard key
         QueueButtonTransition(
           UsbKeyboardDevice,
-          mGlobalConfig.RightTriggerKey,
+          RightTriggerMapping,
           RightTriggerPressed
         );
       }

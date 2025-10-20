@@ -20,6 +20,15 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define MAX_CUSTOM_DEVICES              32      // Maximum custom devices in config
 
 //
+// Special function codes for mouse and scroll
+//
+#define FUNCTION_CODE_MOUSE_LEFT      0xF0  // Mouse left button
+#define FUNCTION_CODE_MOUSE_RIGHT     0xF1  // Mouse right button
+#define FUNCTION_CODE_MOUSE_MIDDLE    0xF2  // Mouse middle button (reserved)
+#define FUNCTION_CODE_SCROLL_UP       0xF3  // Scroll wheel up
+#define FUNCTION_CODE_SCROLL_DOWN     0xF4  // Scroll wheel down
+
+//
 // Xbox 360 compatible device structure
 //
 typedef struct {
@@ -34,7 +43,8 @@ typedef struct {
 typedef enum {
   STICK_MODE_DISABLED = 0,
   STICK_MODE_KEYS = 1,
-  STICK_MODE_MOUSE = 2
+  STICK_MODE_MOUSE = 2,
+  STICK_MODE_SCROLL = 3
 } STICK_MODE;
 
 //
@@ -57,7 +67,11 @@ typedef struct {
   UINT8    LeftMapping;       // Left key
   UINT8    RightMapping;      // Right key
   
-  UINT8    Reserved[8];       // Reserved for future use
+  // Scroll mode settings
+  UINT8    ScrollSensitivity;  // Scroll sensitivity (1-100)
+  UINT8    ScrollDeadzone;     // Scroll deadzone multiplier (optional)
+  
+  UINT8    Reserved[6];        // Reserved for future use
 } STICK_CONFIG;
 
 //
