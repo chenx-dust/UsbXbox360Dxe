@@ -173,12 +173,6 @@ TrimString (
 
 STATIC
 BOOLEAN
-ParseBool (
-  IN CHAR8  *Value
-  );
-
-STATIC
-BOOLEAN
 ParseDeviceString (
   IN  CHAR8                      *DeviceStr,
   OUT XBOX360_COMPATIBLE_DEVICE  *Device
@@ -629,35 +623,6 @@ TrimString (
 }
 
 /**
-  Parse a boolean value from a string.
-
-  @param  Value  String to parse (true/false/yes/no/1/0).
-
-  @retval TRUE   Value is true.
-  @retval FALSE  Value is false or unrecognized.
-**/
-STATIC
-BOOLEAN
-ParseBool (
-  IN CHAR8  *Value
-  )
-{
-  if (Value == NULL) {
-    return FALSE;
-  }
-
-  if ((AsciiStrCmp(Value, "true") == 0) ||
-      (AsciiStrCmp(Value, "TRUE") == 0) ||
-      (AsciiStrCmp(Value, "yes") == 0) ||
-      (AsciiStrCmp(Value, "YES") == 0) ||
-      (AsciiStrCmp(Value, "1") == 0)) {
-    return TRUE;
-  }
-
-  return FALSE;
-}
-
-/**
   Parse device string in format: VID:PID:Description
   VID and PID can be hex (0x1234 or 1234).
 
@@ -763,8 +728,6 @@ SetDefaultConfig (
   OUT XBOX360_CONFIG  *Config
   )
 {
-  UINTN  i;
-
   if (Config == NULL) {
     return;
   }
