@@ -78,7 +78,7 @@ Each stick can be configured independently:
 - **Mouse Mode Settings**:
   - `MouseSensitivity`: 1-100 (default: 50)
   - `MouseMaxSpeed`: Max pixels per poll (default: 20)
-  - `MouseCurve`: Response curve (0=Linear, 1=Quadratic, 2=Square/recommended)
+  - `MouseCurve`: Response curve (1=Linear, 2=Square/recommended, 3=S-curve)
 - **Scroll Mode Settings**:
   - `ScrollSensitivity`: 1-100 (default: 30)
   - `ScrollDeadzone`: Additional deadzone (default: 0, uses stick deadzone)
