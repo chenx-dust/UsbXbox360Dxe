@@ -165,8 +165,8 @@ The driver automatically logs diagnostic information to your ESP partition for t
 
 ### Log Features
 - **Daily rotation**: New log file created each day
-- **Auto-cleanup**: Keeps last 7 days of logs
-- **Max size**: 5MB per file (rotates when exceeded)
+- **Auto-cleanup**: Keeps last 5 log files
+- **Max size**: 1MB per file (rotates when exceeded)
 - **Timestamped entries**: Each log entry includes date and time
 
 ### What's Logged
