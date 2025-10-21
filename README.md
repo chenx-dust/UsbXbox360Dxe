@@ -1,14 +1,17 @@
 # UEFI Driver for Xbox 360 Controller
 
-This driver is modified from [edk2](https://github.com/tianocore/edk2) USB keyboard driver, with AI-assistance. It maps Xbox 360 controller buttons and triggers to keyboard keys, enabling controller use in UEFI environments (BIOS, bootloaders, etc.).
+This driver is modified from [edk2](https://github.com/tianocore/edk2) USB keyboard driver, with AI-assistance. It provides full Xbox 360 controller support in UEFI environments with mouse emulation, enabling controller use in BIOS, bootloaders, and other UEFI applications.
 
 ## Features
 
 - **40+ Built-in Device Support**: Xbox 360 controllers, handheld gaming devices (GPD, OneXPlayer, Legion Go, MSI Claw, etc.), 8BitDo, Logitech, HyperX, and more
-- **Trigger Button Support**: Left and Right triggers can be mapped to keyboard keys
+- **Mouse Emulation**: Analog sticks can control mouse cursor and scroll wheel (via EFI_SIMPLE_POINTER_PROTOCOL)
+- **Trigger Button Support**: Left and Right triggers can be mapped to keyboard keys or mouse buttons
+- **Flexible Stick Modes**: Each stick can independently operate in Mouse, Keys, Scroll, or Disabled mode
 - **Configuration File Support**: Customize settings via INI file on ESP partition
 - **Custom Device Support**: Add your own Xbox 360 protocol compatible devices
 - **Auto-configuration**: Driver creates default config on first boot
+- **Debug Logging**: Automatic logging to ESP partition with rotation and cleanup
 
 ## Default Key Mappings
 
@@ -21,14 +24,27 @@ This driver is modified from [edk2](https://github.com/tianocore/edk2) USB keybo
 
 ### Shoulder Buttons & Triggers
 - **Left/Right Shoulder (LB/RB)**: Page Up/Down
-- **Left/Right Thumb Click**: Left Control/Alt
-- **Left Trigger (LT)**: Delete (default threshold: 128/255)
-- **Right Trigger (RT)**: End (default threshold: 128/255)
+- **Left/Right Thumb Click (L3/R3)**: Left Control/Alt
+- **Left Trigger (LT)**: Mouse Right Button (default threshold: 128/255)
+- **Right Trigger (RT)**: Mouse Left Button (default threshold: 128/255)
 
 ### Special Buttons
 - **Start**: Space
 - **Back**: Tab
 - **Guide**: Left Shift
+
+### Analog Sticks
+- **Left Stick**: Mouse cursor control (default mode)
+  - Move stick to control mouse pointer
+  - Sensitivity: 50/100
+  - Max speed: 20 pixels/poll
+  - Deadzone: 8000/32767
+- **Right Stick**: Scroll wheel control (default mode)
+  - Move stick up/down to scroll
+  - Scroll sensitivity: 30/100
+  - Deadzone: 8689/32767
+
+> **Note**: Mouse functionality requires UEFI firmware with mouse support. Most modern UEFI implementations support this. Each stick can be independently configured for Mouse, Keys, Scroll, or Disabled mode via config file.
 
 ## Configuration
 
@@ -47,9 +63,31 @@ The driver supports configuration via an INI file on your ESP partition. On firs
 
 ### Configuration Options
 
+#### Basic Settings
 - **Deadzone**: Analog stick deadzone (0-32767, default: 8000)
 - **TriggerThreshold**: Trigger activation threshold (0-255, default: 128)
-- **LeftTrigger/RightTrigger**: Key mappings for triggers (USB HID scan codes)
+- **LeftTrigger/RightTrigger**: Trigger mappings (USB HID scan codes or mouse function codes)
+  - `0xF0` = Mouse Left Button (default for RT)
+  - `0xF1` = Mouse Right Button (default for LT)
+  - `0xF3` = Scroll Up, `0xF4` = Scroll Down
+  - `0x00-0xE7` = Keyboard keys (USB HID scan codes)
+
+#### Stick Mode Configuration
+Each stick can be configured independently:
+- **LeftStickMode / RightStickMode**: `Mouse`, `Keys`, `Scroll`, or `Disabled`
+- **Mouse Mode Settings**:
+  - `MouseSensitivity`: 1-100 (default: 50)
+  - `MouseMaxSpeed`: Max pixels per poll (default: 20)
+  - `MouseCurve`: Response curve (0=Linear, 1=Quadratic, 2=Square/recommended)
+- **Scroll Mode Settings**:
+  - `ScrollSensitivity`: 1-100 (default: 30)
+  - `ScrollDeadzone`: Additional deadzone (default: 0, uses stick deadzone)
+- **Keys Mode Settings**:
+  - Direction mappings (e.g., `LeftStickUp`, `RightStickDown`)
+  - `DirectionMode`: 4 or 8-way (default: 4)
+
+#### Other Options
+- **Button Mappings**: Customize all 16 buttons (see `config.ini.example`)
 - **Custom Devices**: Add your own Xbox 360 compatible devices
 
 Example configuration:
@@ -57,10 +95,22 @@ Example configuration:
 Version=1.0
 Deadzone=8000
 TriggerThreshold=128
-LeftTrigger=0x4C    # Delete
-RightTrigger=0x4D   # End
+
+# Triggers as mouse buttons (default)
+RightTrigger=0xF0    # Mouse Left Button
+LeftTrigger=0xF1     # Mouse Right Button
+
+# Left stick: Mouse mode (default)
+LeftStickMode=Mouse
+LeftStickMouseSensitivity=50
+LeftStickMouseMaxSpeed=20
+
+# Right stick: Scroll mode (default)
+RightStickMode=Scroll
+RightStickScrollSensitivity=30
 
 # Add custom devices
+# [CustomDevices]
 # Device1=0x1234:0x5678:My Custom Controller
 ```
 
@@ -104,22 +154,62 @@ The driver will log detected devices to debug output.
 
 See `KeyBoard.c` for the complete list of supported devices.
 
+## Debug Logging
+
+The driver automatically logs diagnostic information to your ESP partition for troubleshooting.
+
+### Log File Location
+- **Path**: `\EFI\Xbox360\xbox360_YYYYMMDD.log` (e.g., `xbox360_20251021.log`)
+- **Linux**: `/boot/efi/EFI/Xbox360/xbox360_YYYYMMDD.log`
+- **Windows**: `X:\EFI\Xbox360\xbox360_YYYYMMDD.log`
+
+### Log Features
+- **Daily rotation**: New log file created each day
+- **Auto-cleanup**: Keeps last 7 days of logs
+- **Max size**: 5MB per file (rotates when exceeded)
+- **Timestamped entries**: Each log entry includes date and time
+
+### What's Logged
+- Driver initialization and device detection
+- Configuration file loading/parsing
+- USB device VID/PID for detected controllers
+- Protocol installation status
+- Error conditions and warnings
+
+### Viewing Logs
+1. Mount your ESP partition
+2. Navigate to `\EFI\Xbox360\`
+3. Open the most recent log file with a text editor
+
+The log is useful for diagnosing why a controller isn't being detected or if configuration isn't loading properly.
+
 ## Troubleshooting
 
 **Q: My controller isn't recognized**
 A: Add it as a custom device in the config file (see above).
 
+**Q: Mouse cursor doesn't appear**
+A: Not all UEFI firmwares support mouse functionality. If your firmware doesn't show a mouse cursor, you can:
+1. Switch sticks to `Keys` mode for keyboard-based navigation
+2. Use triggers and buttons which still work as keyboard keys
+
 **Q: Triggers aren't working**
 A: Check that `TriggerThreshold` is appropriate for your controller (try lowering it).
 
+**Q: Stick movement is too fast/slow**
+A: Adjust sensitivity settings in config:
+- For mouse mode: `LeftStickMouseSensitivity` (1-100)
+- For scroll mode: `RightStickScrollSensitivity` (1-100)
+
 **Q: Changes don't take effect**
 A: Ensure:
-1. The config file is in the correct location
+1. The config file is in the correct location (`\EFI\Xbox360\config.ini`)
 2. The file is saved in UTF-8 or ASCII format
 3. You've rebooted after making changes
+4. Check the log file (`\EFI\Xbox360\xbox360_YYYYMMDD.log`) for errors
 
 **Q: How do I know if the driver is working?**
-A: Try using the controller in your UEFI BIOS menu. The controller should work like a keyboard.
+A: Try using the controller in your UEFI BIOS menu or boot manager. The controller should work for navigation. Check the log file for device detection info.
 
 ## License
 
