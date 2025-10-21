@@ -159,9 +159,9 @@ See `KeyBoard.c` for the complete list of supported devices.
 The driver automatically logs diagnostic information to your ESP partition for troubleshooting.
 
 ### Log File Location
-- **Path**: `\EFI\Xbox360\xbox360_YYYYMMDD.log` (e.g., `xbox360_20251021.log`)
-- **Linux**: `/boot/efi/EFI/Xbox360/xbox360_YYYYMMDD.log`
-- **Windows**: `X:\EFI\Xbox360\xbox360_YYYYMMDD.log`
+- **Path**: `\EFI\Xbox360\driver_YYYYMMDD.log` (e.g., `driver_20251021.log`)
+- **Linux**: `/boot/efi/EFI/Xbox360/driver_YYYYMMDD.log`
+- **Windows**: `X:\EFI\Xbox360\driver_YYYYMMDD.log`
 
 ### Log Features
 - **Daily rotation**: New log file created each day
@@ -206,7 +206,7 @@ A: Ensure:
 1. The config file is in the correct location (`\EFI\Xbox360\config.ini`)
 2. The file is saved in UTF-8 or ASCII format
 3. You've rebooted after making changes
-4. Check the log file (`\EFI\Xbox360\xbox360_YYYYMMDD.log`) for errors
+4. Check the log file (`\EFI\Xbox360\driver_YYYYMMDD.log`) for errors
 
 **Q: How do I know if the driver is working?**
 A: Try using the controller in your UEFI BIOS menu or boot manager. The controller should work for navigation. Check the log file for device detection info.
