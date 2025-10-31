@@ -28,8 +28,16 @@
   EfiKey.c
   EfiKey.h
   KeyBoard.c
-  ComponentName.c
   KeyBoard.h
+  ComponentName.c
+  Xbox360Log.c
+  Xbox360Log.h
+  Xbox360Device.c
+  Xbox360Device.h
+  Xbox360Config.c
+  Xbox360Config.h
+  Xbox360Input.c
+  Xbox360Input.h
 
 [Packages]
   MdePkg/MdePkg.dec

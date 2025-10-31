@@ -13,13 +13,6 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include "EfiKey.h"
 
 //
-// Xbox 360 Configuration Constants
-//
-#define XBOX360_CONFIG_VERSION_1_0      0x0100  // Initial version
-#define XBOX360_CONFIG_VERSION_CURRENT  XBOX360_CONFIG_VERSION_1_0
-#define MAX_CUSTOM_DEVICES              32      // Maximum custom devices in config
-
-//
 // Special function codes for mouse and scroll
 //
 #define FUNCTION_CODE_MOUSE_LEFT      0xF0  // Mouse left button
@@ -27,122 +20,6 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #define FUNCTION_CODE_MOUSE_MIDDLE    0xF2  // Mouse middle button (reserved)
 #define FUNCTION_CODE_SCROLL_UP       0xF3  // Scroll wheel up
 #define FUNCTION_CODE_SCROLL_DOWN     0xF4  // Scroll wheel down
-
-//
-// ============================================================================
-// Advanced Logging System Configuration
-// ============================================================================
-//
-
-#define XBOX360_LOG_ENABLED         1      // Set to 0 to disable logging
-#define XBOX360_LOG_MAX_SIZE        (1024 * 1024)  // 1 MB per log file
-#define XBOX360_LOG_MAX_FILES       5      // Keep only last 5 log files
-
-#define LOG_LEVEL_INFO          0
-#define LOG_LEVEL_WARN          1
-#define LOG_LEVEL_ERROR         2
-
-//
-// Log function declarations
-//
-VOID
-EFIAPI
-Xbox360Log (
-  IN UINT8        Level,
-  IN CONST CHAR8  *Format,
-  ...
-  );
-
-VOID
-EFIAPI
-Xbox360LogCleanup (
-  VOID
-  );
-
-VOID
-EFIAPI
-Xbox360LogSetImageHandle (
-  IN EFI_HANDLE  ImageHandle
-  );
-
-#if XBOX360_LOG_ENABLED
-  #define LOG_INFO(...)   Xbox360Log(LOG_LEVEL_INFO, __VA_ARGS__)
-  #define LOG_WARN(...)   Xbox360Log(LOG_LEVEL_WARN, __VA_ARGS__)
-  #define LOG_ERROR(...)  Xbox360Log(LOG_LEVEL_ERROR, __VA_ARGS__)
-#else
-  #define LOG_INFO(...)
-  #define LOG_WARN(...)
-  #define LOG_ERROR(...)
-#endif
-
-//
-// ============================================================================
-// End of Logging System Configuration
-// ============================================================================
-//
-
-//
-// Xbox 360 compatible device structure
-//
-typedef struct {
-  UINT16    VendorId;
-  UINT16    ProductId;
-  CHAR16    *Description;
-} XBOX360_COMPATIBLE_DEVICE;
-
-//
-// Analog stick mode
-//
-typedef enum {
-  STICK_MODE_DISABLED = 0,
-  STICK_MODE_KEYS = 1,
-  STICK_MODE_MOUSE = 2,
-  STICK_MODE_SCROLL = 3
-} STICK_MODE;
-
-//
-// Single stick configuration
-//
-typedef struct {
-  UINT8    Mode;              // STICK_MODE
-  UINT16   Deadzone;          // Deadzone (0-32767)
-  UINT16   Saturation;        // Saturation value (deadzone-32767)
-  
-  // Mouse mode settings
-  UINT8    MouseSensitivity;  // Sensitivity (1-100)
-  UINT8    MouseMaxSpeed;     // Max speed (pixels per poll)
-  UINT8    MouseCurve;        // Response curve: 1=Linear, 2=Square, 3=S-curve
-  
-  // Keys mode settings
-  UINT8    DirectionMode;     // 4=4-way, 8=8-way
-  UINT8    UpMapping;         // Up key
-  UINT8    DownMapping;       // Down key
-  UINT8    LeftMapping;       // Left key
-  UINT8    RightMapping;      // Right key
-  
-  // Scroll mode settings
-  UINT8    ScrollSensitivity;  // Scroll sensitivity (1-100)
-  UINT8    ScrollDeadzone;     // Scroll deadzone multiplier (optional)
-  
-  UINT8    Reserved[6];        // Reserved for future use
-} STICK_CONFIG;
-
-//
-// Xbox 360 Configuration Structure
-//
-typedef struct {
-  UINT16                       Version;              // Config format version
-  UINT16                       StickDeadzone;        // Global stick deadzone (0-32767, deprecated, use per-stick config)
-  UINT8                        TriggerThreshold;     // Trigger activation threshold (0-255)
-  UINT8                        LeftTriggerKey;       // Left trigger key mapping
-  UINT8                        RightTriggerKey;      // Right trigger key mapping
-  UINT8                        ButtonMap[16];        // Button to key mappings
-  UINTN                        CustomDeviceCount;    // Number of custom devices
-  XBOX360_COMPATIBLE_DEVICE    CustomDevices[MAX_CUSTOM_DEVICES]; // Custom device list
-  STICK_CONFIG                 LeftStick;            // Left analog stick configuration
-  STICK_CONFIG                 RightStick;           // Right analog stick configuration
-  UINT8                        Reserved[32];         // Reserved for future expansion
-} XBOX360_CONFIG;
 
 #define USB_KEYBOARD_KEY_COUNT  105
 

@@ -40,6 +40,11 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include <IndustryStandard/Usb.h>
 
+#include "Xbox360Log.h"
+#include "Xbox360Device.h"
+#include "Xbox360Config.h"
+#include "Xbox360Input.h"
+
 #define KEYBOARD_TIMER_INTERVAL  200000         // 0.02s
 
 #define MAX_KEY_ALLOWED  32
