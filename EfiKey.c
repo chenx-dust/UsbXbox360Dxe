@@ -189,6 +189,17 @@ USBKeyboardDriverBindingStart (
 
   LOG_INFO ("USB I/O protocol opened successfully");
 
+  //
+  // Check if this is an MSI Claw controller and switch to XInput mode
+  //
+  if (IsMsiClaw (UsbIo)) {
+    Status = SwitchMsiClawToXInputMode (UsbIo);
+    if (EFI_ERROR (Status)) {
+      LOG_WARN ("MSI Claw mode switch failed: %r (continuing anyway)", Status);
+      // Continue even if mode switch fails - device might still work
+    }
+  }
+
   UsbKeyboardDevice = AllocateZeroPool (sizeof (USB_KB_DEV));
   ASSERT (UsbKeyboardDevice != NULL);
 

@@ -80,5 +80,35 @@ IsUSBKeyboard (
   IN  EFI_USB_IO_PROTOCOL  *UsbIo
   );
 
+/**
+  Check if the given USB device is an MSI Claw controller.
+  
+  @param  UsbIo    Pointer to USB I/O Protocol
+
+  @retval TRUE     Device is MSI Claw
+  @retval FALSE    Device is not MSI Claw
+**/
+BOOLEAN
+IsMsiClaw (
+  IN  EFI_USB_IO_PROTOCOL  *UsbIo
+  );
+
+/**
+  Switch MSI Claw controller to XInput mode.
+  
+  MSI Claw controllers default to DirectInput mode in UEFI. This function
+  sends USB commands to switch the controller to XInput mode for better
+  compatibility.
+
+  @param  UsbIo    Pointer to USB I/O Protocol
+
+  @retval EFI_SUCCESS     Mode switch commands sent successfully
+  @retval Other           Failed to switch mode
+**/
+EFI_STATUS
+SwitchMsiClawToXInputMode (
+  IN  EFI_USB_IO_PROTOCOL  *UsbIo
+  );
+
 #endif // _XBOX360_DEVICE_H_
 

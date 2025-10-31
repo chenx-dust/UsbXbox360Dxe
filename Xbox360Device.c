@@ -276,3 +276,143 @@ IsUSBKeyboard (
   return FALSE;
 }
 
+/**
+  Check if the given USB device is an MSI Claw controller.
+  
+  @param  UsbIo    Pointer to USB I/O Protocol
+
+  @retval TRUE     Device is MSI Claw
+  @retval FALSE    Device is not MSI Claw
+**/
+BOOLEAN
+IsMsiClaw (
+  IN  EFI_USB_IO_PROTOCOL  *UsbIo
+  )
+{
+  EFI_STATUS                  Status;
+  EFI_USB_DEVICE_DESCRIPTOR   DeviceDescriptor;
+
+  if (UsbIo == NULL) {
+    return FALSE;
+  }
+
+  Status = UsbIo->UsbGetDeviceDescriptor (UsbIo, &DeviceDescriptor);
+  if (EFI_ERROR (Status)) {
+    return FALSE;
+  }
+
+  // MSI Claw: VID=0x0DB0, PID=0x1901
+  return (DeviceDescriptor.IdVendor == 0x0DB0 && 
+          DeviceDescriptor.IdProduct == 0x1901);
+}
+
+/**
+  Switch MSI Claw controller to XInput mode.
+  
+  MSI Claw controllers default to DirectInput mode in UEFI. This function
+  sends USB commands to switch the controller to XInput mode for better
+  compatibility.
+
+  @param  UsbIo    Pointer to USB I/O Protocol
+
+  @retval EFI_SUCCESS     Mode switch commands sent successfully
+  @retval Other           Failed to switch mode
+**/
+EFI_STATUS
+SwitchMsiClawToXInputMode (
+  IN  EFI_USB_IO_PROTOCOL  *UsbIo
+  )
+{
+  EFI_STATUS  Status;
+  UINT8       CommandBuffer[64];
+  UINT32      UsbStatus;
+  UINTN       DataLength;
+
+  if (UsbIo == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  LOG_INFO ("MSI Claw detected, switching to XInput mode...");
+
+  //
+  // Command 1: Switch to XInput mode
+  // Format: [0x0F, 0x00, 0x00, 0x3C, 0x24, 0x01, 0x00, ... (rest zeros)]
+  //
+  ZeroMem (CommandBuffer, sizeof(CommandBuffer));
+  CommandBuffer[0] = 0x0F;  // Report ID
+  CommandBuffer[1] = 0x00;
+  CommandBuffer[2] = 0x00;
+  CommandBuffer[3] = 0x3C;
+  CommandBuffer[4] = 0x24;  // Command: SWITCH_MODE
+  CommandBuffer[5] = 0x01;  // Mode: XInput
+  CommandBuffer[6] = 0x00;  // Macro function: disabled
+
+  DataLength = sizeof(CommandBuffer);
+  
+  // Use Control Transfer with Set_Report request
+  Status = UsbIo->UsbControlTransfer (
+                    UsbIo,
+                    EFI_USB_DATA_OUT | 
+                    (USB_REQ_TYPE_CLASS << 5) | 
+                    USB_TARGET_INTERFACE,
+                    USB_HID_CLASS_SET_REPORT,
+                    0x0F | (0x02 << 8),  // Report ID | Report Type (Output)
+                    0,                   // Interface
+                    DataLength,
+                    CommandBuffer,
+                    100,                 // 100ms timeout
+                    &UsbStatus
+                    );
+
+  if (EFI_ERROR (Status)) {
+    LOG_ERROR ("Failed to send SWITCH_MODE command: %r", Status);
+    return Status;
+  }
+
+  LOG_INFO ("SWITCH_MODE command sent successfully");
+
+  // Delay between commands
+  gBS->Stall (50000);  // 50ms
+
+  //
+  // Command 2: Sync to ROM (save settings)
+  // Format: [0x0F, 0x00, 0x00, 0x3C, 0x22, ... (rest zeros)]
+  //
+  ZeroMem (CommandBuffer, sizeof(CommandBuffer));
+  CommandBuffer[0] = 0x0F;  // Report ID
+  CommandBuffer[1] = 0x00;
+  CommandBuffer[2] = 0x00;
+  CommandBuffer[3] = 0x3C;
+  CommandBuffer[4] = 0x22;  // Command: SYNC_TO_ROM
+
+  DataLength = sizeof(CommandBuffer);
+  
+  Status = UsbIo->UsbControlTransfer (
+                    UsbIo,
+                    EFI_USB_DATA_OUT | 
+                    (USB_REQ_TYPE_CLASS << 5) | 
+                    USB_TARGET_INTERFACE,
+                    USB_HID_CLASS_SET_REPORT,
+                    0x0F | (0x02 << 8),  // Report ID | Report Type (Output)
+                    0,                   // Interface
+                    DataLength,
+                    CommandBuffer,
+                    100,                 // 100ms timeout
+                    &UsbStatus
+                    );
+
+  if (EFI_ERROR (Status)) {
+    LOG_WARN ("Failed to send SYNC_TO_ROM command: %r (non-critical)", Status);
+    // Don't return error, SYNC_TO_ROM is optional
+  } else {
+    LOG_INFO ("SYNC_TO_ROM command sent successfully");
+  }
+
+  // Final delay to let device process
+  gBS->Stall (100000);  // 100ms
+
+  LOG_INFO ("MSI Claw mode switch completed");
+  
+  return EFI_SUCCESS;
+}
+
