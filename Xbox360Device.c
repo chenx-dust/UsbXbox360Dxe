@@ -323,10 +323,10 @@ SwitchMsiClawToXInputMode (
   IN  EFI_USB_IO_PROTOCOL  *UsbIo
   )
 {
-  EFI_STATUS  Status;
-  UINT8       CommandBuffer[64];
-  UINT32      UsbStatus;
-  UINTN       DataLength;
+  EFI_STATUS              Status;
+  UINT8                   CommandBuffer[64];
+  UINT32                  UsbStatus;
+  EFI_USB_DEVICE_REQUEST  Request;
 
   if (UsbIo == NULL) {
     return EFI_INVALID_PARAMETER;
@@ -347,20 +347,20 @@ SwitchMsiClawToXInputMode (
   CommandBuffer[5] = 0x01;  // Mode: XInput
   CommandBuffer[6] = 0x00;  // Macro function: disabled
 
-  DataLength = sizeof(CommandBuffer);
+  // Setup USB HID Set_Report request
+  Request.RequestType = 0x21;  // Host to Device, Class, Interface
+  Request.Request     = 0x09;  // SET_REPORT
+  Request.Value       = 0x020F;  // Report Type (Output=0x02) | Report ID (0x0F)
+  Request.Index       = 0;     // Interface 0
+  Request.Length      = sizeof(CommandBuffer);
   
-  // Use Control Transfer with Set_Report request
   Status = UsbIo->UsbControlTransfer (
                     UsbIo,
-                    EFI_USB_DATA_OUT | 
-                    (USB_REQ_TYPE_CLASS << 5) | 
-                    USB_TARGET_INTERFACE,
-                    USB_HID_CLASS_SET_REPORT,
-                    0x0F | (0x02 << 8),  // Report ID | Report Type (Output)
-                    0,                   // Interface
-                    DataLength,
+                    &Request,
+                    EfiUsbDataOut,
+                    100,  // 100ms timeout
                     CommandBuffer,
-                    100,                 // 100ms timeout
+                    sizeof(CommandBuffer),
                     &UsbStatus
                     );
 
@@ -385,19 +385,20 @@ SwitchMsiClawToXInputMode (
   CommandBuffer[3] = 0x3C;
   CommandBuffer[4] = 0x22;  // Command: SYNC_TO_ROM
 
-  DataLength = sizeof(CommandBuffer);
+  // Setup USB HID Set_Report request
+  Request.RequestType = 0x21;  // Host to Device, Class, Interface
+  Request.Request     = 0x09;  // SET_REPORT
+  Request.Value       = 0x020F;  // Report Type (Output=0x02) | Report ID (0x0F)
+  Request.Index       = 0;     // Interface 0
+  Request.Length      = sizeof(CommandBuffer);
   
   Status = UsbIo->UsbControlTransfer (
                     UsbIo,
-                    EFI_USB_DATA_OUT | 
-                    (USB_REQ_TYPE_CLASS << 5) | 
-                    USB_TARGET_INTERFACE,
-                    USB_HID_CLASS_SET_REPORT,
-                    0x0F | (0x02 << 8),  // Report ID | Report Type (Output)
-                    0,                   // Interface
-                    DataLength,
+                    &Request,
+                    EfiUsbDataOut,
+                    100,  // 100ms timeout
                     CommandBuffer,
-                    100,                 // 100ms timeout
+                    sizeof(CommandBuffer),
                     &UsbStatus
                     );
 
