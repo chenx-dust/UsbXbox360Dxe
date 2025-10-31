@@ -35,6 +35,8 @@ ParseDeviceString (
   OUT XBOX360_COMPATIBLE_DEVICE  *Device
   );
 
+STATIC
+VOID
 TrimString (
   IN OUT CHAR8  *Str
   )
@@ -1302,7 +1304,6 @@ GenerateExampleFile (
 
   @retval EFI_SUCCESS  Configuration loaded (or defaults used).
 **/
-STATIC
 EFI_STATUS
 LoadConfigWithMigration (
   OUT XBOX360_CONFIG  *Config
