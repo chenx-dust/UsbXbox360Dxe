@@ -19,11 +19,6 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Protocol/UsbIo.h>
 
-//
-// Forward declarations
-//
-typedef struct _USB_KB_DEV USB_KB_DEV;
-
 /**
   Handler function for Xbox 360 controller asynchronous interrupt transfer.
 
