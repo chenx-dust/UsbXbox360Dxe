@@ -950,7 +950,6 @@ InitUSBKeyboard (
 
   return EFI_SUCCESS;
 }
-}
 
 /**
   Retrieves a USB keycode after parsing the raw data in keyboard buffer.
