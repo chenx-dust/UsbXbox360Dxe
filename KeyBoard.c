@@ -819,12 +819,12 @@ InitUSBKeyboard (
   //
   // Load configuration from file (or use defaults)
   //
-  LoadConfigWithMigration(&GetGlobalConfig()->);
+  LoadConfigWithMigration(GetGlobalConfig());
 
   //
   // Initialize dynamic device list with custom devices
   //
-  InitializeDeviceList(&GetGlobalConfig()->);
+  InitializeDeviceList(GetGlobalConfig());
 
   InitQueue (&UsbKeyboardDevice->UsbKeyQueue, sizeof (USB_KEY));
   InitQueue (&UsbKeyboardDevice->EfiKeyQueue, sizeof (EFI_KEY_DATA));
