@@ -222,6 +222,11 @@ CalculateMouseMovement (
   }
   
   // Normalized = (Magnitude - Deadzone) / (Saturation - Deadzone)
+  // Prevent division-by-zero if Saturation equals Deadzone
+  if (Config->Saturation <= Config->Deadzone) {
+    return;  // No movement if configuration is invalid
+  }
+  
   Normalized = ((Magnitude - Config->Deadzone) * 10000) / 
                (Config->Saturation - Config->Deadzone);
   
@@ -303,6 +308,11 @@ CalculateScrollDelta (
   Magnitude = AbsY;
   if (Magnitude > Config->Saturation) {
     Magnitude = Config->Saturation;
+  }
+  
+  // Prevent division-by-zero if Saturation equals Deadzone
+  if (Config->Saturation <= Config->Deadzone) {
+    return 0;  // No scroll if configuration is invalid
   }
   
   Normalized = ((Magnitude - Config->Deadzone) * 100) / 

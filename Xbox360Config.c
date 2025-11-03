@@ -737,6 +737,26 @@ ValidateAndSanitizeConfig (
     Config->RightStick.ScrollSensitivity = 30;
   }
 
+  // Validate Saturation > Deadzone to prevent division-by-zero
+  if (Config->LeftStick.Saturation <= Config->LeftStick.Deadzone) {
+    DEBUG((DEBUG_WARN, "Xbox360: LeftStick Saturation (%d) must be greater than Deadzone (%d), adjusting\n", 
+      Config->LeftStick.Saturation, Config->LeftStick.Deadzone));
+    Config->LeftStick.Saturation = Config->LeftStick.Deadzone + 1000;
+    if (Config->LeftStick.Saturation > 32767) {
+      Config->LeftStick.Saturation = 32767;
+      Config->LeftStick.Deadzone = 31767;
+    }
+  }
+  if (Config->RightStick.Saturation <= Config->RightStick.Deadzone) {
+    DEBUG((DEBUG_WARN, "Xbox360: RightStick Saturation (%d) must be greater than Deadzone (%d), adjusting\n", 
+      Config->RightStick.Saturation, Config->RightStick.Deadzone));
+    Config->RightStick.Saturation = Config->RightStick.Deadzone + 1000;
+    if (Config->RightStick.Saturation > 32767) {
+      Config->RightStick.Saturation = 32767;
+      Config->RightStick.Deadzone = 31767;
+    }
+  }
+
   // Update version to current
   Config->Version = XBOX360_CONFIG_VERSION_CURRENT;
 }
