@@ -41,19 +41,30 @@ TrimString (
   IN OUT CHAR8  *Str
   )
 {
+  CHAR8  *Start;
   CHAR8  *End;
+  UINTN  Len;
 
   if (Str == NULL || *Str == '\0') {
     return;
   }
 
-  // Trim leading whitespace
-  while (*Str == ' ' || *Str == '\t' || *Str == '\r' || *Str == '\n') {
-    Str++;
+  // Find first non-whitespace character
+  Start = Str;
+  while (*Start == ' ' || *Start == '\t' || *Start == '\r' || *Start == '\n') {
+    Start++;
   }
 
-  if (*Str == '\0') {
+  // If string is all whitespace, set to empty string
+  if (*Start == '\0') {
+    *Str = '\0';
     return;
+  }
+
+  // Move content to beginning if there was leading whitespace
+  if (Start != Str) {
+    Len = AsciiStrLen(Start);
+    CopyMem(Str, Start, Len + 1);  // +1 to include null terminator
   }
 
   // Trim trailing whitespace
