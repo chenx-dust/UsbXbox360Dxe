@@ -1,0 +1,229 @@
+# Xbox 360 Controller Driver Configuration
+# =========================================
+# Copy this file to \EFI\Xbox360\config.ini on your ESP partition and edit as needed.
+# The driver will automatically create a default config on first boot if none exists.
+#
+# Version History:
+#   1.0 - Initial release with basic settings
+
+Version=1.0
+
+# ==================
+# Analog Stick Settings
+# ==================
+# Deadzone: 0-32767 (default: 8000)
+# Values below this threshold are ignored to prevent drift
+Deadzone=8000
+
+# ==================
+# Trigger Settings
+# ==================
+# TriggerThreshold: 0-255, trigger activation point (default: 128)
+# Triggers will activate when their value exceeds this threshold
+TriggerThreshold=128
+
+# Trigger mappings (USB HID scan codes OR mouse function codes)
+# Mouse function codes:
+#   0xF0 = Mouse Left Button
+#   0xF1 = Mouse Right Button
+#   0xF2 = Mouse Middle Button (reserved)
+#   0xF3 = Scroll Wheel Up
+#   0xF4 = Scroll Wheel Down
+# Keyboard key codes: 0x00-0xE7 (see USB HID spec below)
+# Set to 0xFF to disable a trigger
+#
+# Default: Triggers as mouse buttons (recommended for mouse mode)
+RightTrigger=0xF0         # Mouse Left Button
+LeftTrigger=0xF1          # Mouse Right Button
+
+# Alternative: Use as keyboard keys
+# RightTrigger=0x4D       # End key
+# LeftTrigger=0x4C        # Delete key
+
+# ==================
+# Button Mappings (Optional)
+# ==================
+# Customize button-to-key mappings for all Xbox 360 controller buttons.
+# If not specified, the default mappings shown below are used.
+# Set to 0xFF to disable a button.
+#
+# Default Button Mappings:
+#   ButtonDpadUp=0x52          # Up Arrow
+#   ButtonDpadDown=0x51        # Down Arrow
+#   ButtonDpadLeft=0x50        # Left Arrow
+#   ButtonDpadRight=0x4F       # Right Arrow
+#   ButtonStart=0x2C           # Space
+#   ButtonBack=0x2B            # Tab
+#   ButtonLeftThumb=0xE0       # Left Control (L3)
+#   ButtonRightThumb=0xE2      # Left Alt (R3)
+#   ButtonLeftShoulder=0x4B    # Page Up (LB)
+#   ButtonRightShoulder=0x4E   # Page Down (RB)
+#   ButtonGuide=0xE1           # Left Shift (Xbox button)
+#   ButtonA=0x28               # Enter
+#   ButtonB=0x29               # Escape
+#   ButtonX=0x2A               # Backspace
+#   ButtonY=0x2B               # Tab
+#
+# Examples - Uncomment to customize:
+# ButtonA=0x29               # Swap A and B
+# ButtonB=0x28               # Swap B and A
+# ButtonDpadUp=0x1A          # W key for up
+# ButtonStart=0xFF           # Disable Start button
+
+# ==================
+# Analog Stick Configuration
+# ==================
+# Each stick can be configured independently for different functions.
+# Mode options: Mouse / Keys / Disabled (ONE mode per stick)
+#
+# - Mouse mode: Stick controls mouse movement (requires UEFI mouse support)
+# - Keys mode:  Stick acts as direction keys (for BIOS menus, GRUB navigation)
+# - Disabled:   Stick input is ignored
+
+# ==================
+# Left Stick (default: Mouse mode)
+# ==================
+LeftStickMode=Mouse
+
+# Deadzone: 0-32767, area around center that's ignored (prevents drift)
+# Recommended: 8000 for left stick, 8689 for right stick (Xbox standard)
+LeftStickDeadzone=8000
+
+# Saturation: Maximum input value (deadzone to 32767)
+# Higher values = larger input range, lower values = more sensitive
+LeftStickSaturation=32000
+
+# Mouse Mode Settings (only apply when LeftStickMode=Mouse)
+# ----------------------------------------------------------
+LeftStickMouseSensitivity=50     # 1-100, higher = faster (default: 50)
+LeftStickMouseMaxSpeed=20        # Max pixels per poll (default: 20)
+LeftStickMouseCurve=2            # Response curve:
+                                 #   1=Linear (constant speed)
+                                 #   2=Square (recommended, smooth acceleration)
+                                 #   3=S-curve (slow start, fast middle, slow end)
+
+# Keys Mode Settings (only apply when LeftStickMode=Keys)
+# --------------------------------------------------------
+# To use as direction keys, uncomment and change mode:
+# LeftStickMode=Keys
+# LeftStickDirectionMode=4       # 4=4-way, 8=8-way
+# LeftStickUpMapping=0x52        # Up Arrow
+# LeftStickDownMapping=0x51      # Down Arrow
+# LeftStickLeftMapping=0x50      # Left Arrow
+# LeftStickRightMapping=0x4F     # Right Arrow
+
+# ==================
+# Right Stick (default: Scroll mode)
+# ==================
+RightStickMode=Scroll
+RightStickScrollSensitivity=30   # 1-100, higher = faster scroll
+
+# Right stick scroll mode settings
+# Push up = scroll up, push down = scroll down
+# Deadzone: area around center that's ignored
+# RightStickDeadzone=8689          # Xbox standard for right stick
+
+# Scroll Mode Settings (only apply when RightStickMode=Scroll)
+# --------------------------------------------------------------
+# ScrollSensitivity: 1-100, controls scroll speed (default: 30)
+# Lower values = slower, more precise scrolling
+# Higher values = faster scrolling
+
+# Alternative 1: Use as direction keys (WASD)
+# RightStickMode=Keys
+# RightStickDirectionMode=4       # 4=4-way, 8=8-way
+# RightStickUpMapping=0x1A        # W
+# RightStickDownMapping=0x16      # S
+# RightStickLeftMapping=0x04      # A
+# RightStickRightMapping=0x07     # D
+
+# Alternative 2: Disable right stick
+# RightStickMode=Disabled
+
+# Alternative 3: Use as mouse (if left stick is in Keys mode)
+# RightStickMode=Mouse
+# RightStickMouseSensitivity=50
+# RightStickMouseMaxSpeed=20
+
+# ==================
+# Common Configuration Scenarios
+# ==================
+# 1. Complete Mouse Control (DEFAULT - Recommended):
+#      LeftStickMode=Mouse         # Move cursor
+#      RightStickMode=Scroll       # Scroll wheel
+#      RightTrigger=0xF0           # Mouse left click
+#      LeftTrigger=0xF1            # Mouse right click
+#
+# 2. BIOS Menu Navigation:
+#      LeftStickMode=Keys          # Arrow keys
+#      RightStickMode=Disabled     # Unused
+#      RightTrigger=0x4D           # End key
+#      LeftTrigger=0x4C            # Delete key
+#
+# 3. GRUB with Basic Mouse:
+#      LeftStickMode=Mouse         # Move cursor only
+#      RightStickMode=Disabled     # No scroll
+#      RightTrigger=0xF0           # Left click
+#
+# 4. Dual Stick Navigation:
+#      LeftStickMode=Keys          # Arrow keys
+#      RightStickMode=Keys         # WASD keys
+#
+# 5. Scroll-only Mode:
+#      LeftStickMode=Disabled
+#      RightStickMode=Scroll       # Use right stick for scrolling only
+
+# ==================
+# Custom Device Support
+# ==================
+# The driver includes 40+ built-in Xbox 360 compatible devices.
+# Add your own devices here if they're not recognized.
+#
+# How to find VID/PID:
+#   Linux:   lsusb
+#   Windows: Device Manager -> Properties -> Hardware Ids
+#   macOS:   System Information -> USB
+#
+# Format: DeviceN=VID:PID:Description
+# VID/PID can be hex (0x1234) or without prefix (1234)
+#
+# Examples:
+#   Device1=0x1234:0x5678:My Custom Xbox Controller
+#   Device2=ABCD:EF00:Another Controller (0x prefix optional)
+#   Device3=0x9999:0x8888:Handheld Device Built-in Gamepad
+
+[CustomDevices]
+# Uncomment and edit to add your devices:
+# Device1=0x1234:0x5678:My Custom Controller
+# Device2=
+# Device3=
+
+# ==================
+# USB HID Scan Code Reference
+# ==================
+# Common scan codes for button mappings:
+#   0x28 = Enter          0x29 = Escape        0x2A = Backspace
+#   0x2B = Tab            0x2C = Space         0x2D = Minus
+#   0x4A = Home           0x4B = Page Up       0x4C = Delete
+#   0x4D = End            0x4E = Page Down     0x4F = Right Arrow
+#   0x50 = Left Arrow     0x51 = Down Arrow    0x52 = Up Arrow
+#   0xE0 = Left Control   0xE1 = Left Shift    0xE2 = Left Alt
+#   0xE3 = Left GUI       0xE4 = Right Control 0xE5 = Right Shift
+#   0xE6 = Right Alt      0xE7 = Right GUI
+#   0xFF = Disabled
+#
+# Full USB HID specification:
+# https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf
+
+# ==================
+# Built-in Supported Devices
+# ==================
+# Microsoft: Xbox 360 Wired/Wireless controllers
+# Handhelds: GPD Win 2, OneXPlayer, Legion Go/Go S, MSI Claw, etc.
+# 8BitDo: Ultimate, Pro 2, SN30 Pro
+# Logitech: F310, F510, F710
+# HyperX: Clutch (wired/wireless)
+# And many more... See KeyBoard.c for full list
+
+# End of configuration
+

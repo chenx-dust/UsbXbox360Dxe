@@ -1,0 +1,826 @@
+/** @file
+  Xbox 360 Controller Input Processing Implementation
+
+  This module implements input processing for Xbox 360 controllers, including
+  button mapping, analog stick processing (keys/mouse/scroll modes), and
+  USB interrupt handling.
+
+  Copyright (c) 2024-2025. All rights reserved.
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
+#include "Xbox360Input.h"
+#include "Xbox360Log.h"
+#include "Xbox360Config.h"
+#include "KeyBoard.h"
+#include "EfiKey.h"
+
+// Number of Xbox 360 buttons (16 bits, 0-15)
+//
+#define XBOX360_BUTTON_COUNT  16
+
+
+STATIC
+VOID
+QueueButtonTransition (
+  IN USB_KB_DEV  *UsbKeyboardDevice,
+  IN UINT8       KeyCode,
+  IN BOOLEAN     IsPressed
+  )
+{
+  USB_KEY  UsbKey;
+
+  UsbKey.KeyCode = KeyCode;
+  UsbKey.Down    = IsPressed;
+  Enqueue (&UsbKeyboardDevice->UsbKeyQueue, &UsbKey, sizeof (UsbKey));
+
+  if (!IsPressed && (UsbKeyboardDevice->RepeatKey == KeyCode)) {
+    UsbKeyboardDevice->RepeatKey = 0;
+  }
+}
+
+STATIC
+VOID
+ProcessButtonChanges (
+  IN USB_KB_DEV  *UsbKeyboardDevice,
+  IN UINT16      OldButtons,
+  IN UINT16      NewButtons
+  )
+{
+  UINTN           Index;
+  XBOX360_CONFIG  *Config;
+
+  Config = GetGlobalConfig ();
+
+  // Iterate through all 16 button bits (0-15)
+  for (Index = 0; Index < XBOX360_BUTTON_COUNT; Index++) {
+    UINT16   Mask;
+    BOOLEAN  WasPressed;
+    BOOLEAN  IsPressed;
+    UINT8    KeyMapping;
+
+    // Create button mask for this bit position
+    Mask       = (UINT16)(1 << Index);
+    WasPressed = ((OldButtons & Mask) != 0);
+    IsPressed  = ((NewButtons & Mask) != 0);
+
+    // Skip if button state hasn't changed
+    if (WasPressed == IsPressed) {
+      continue;
+    }
+
+    // Get key mapping from user-configurable button map
+    KeyMapping = Config->ButtonMap[Index];
+    
+    // Check if this is a mouse button function code
+    if (KeyMapping == FUNCTION_CODE_MOUSE_LEFT && UsbKeyboardDevice->SimplePointerInstalled) {
+      UsbKeyboardDevice->SimplePointerState.LeftButton = IsPressed;
+    } else if (KeyMapping == FUNCTION_CODE_MOUSE_RIGHT && UsbKeyboardDevice->SimplePointerInstalled) {
+      UsbKeyboardDevice->SimplePointerState.RightButton = IsPressed;
+    } else if (KeyMapping == FUNCTION_CODE_MOUSE_MIDDLE && UsbKeyboardDevice->SimplePointerInstalled) {
+      // Middle button support (reserved for future)
+    } else if (KeyMapping != 0xFF) {
+      // Standard keyboard key
+      QueueButtonTransition (
+        UsbKeyboardDevice,
+        KeyMapping,
+        IsPressed
+        );
+    }
+  }
+}
+
+/**
+  Apply response curve to normalized stick input (0.0 to 1.0).
+  
+  @param  Normalized  Input value (0.0 to 1.0)
+  @param  Curve       Curve type: 1=Linear, 2=Square, 3=S-curve
+  
+  @return Curved output value (0.0 to 1.0)
+**/
+STATIC
+INT32
+ApplyResponseCurve (
+  IN INT32  Normalized,  // Fixed-point: 0 to 10000 (represents 0.0 to 1.0)
+  IN UINT8  Curve
+  )
+{
+  INT32  Result;
+  
+  if (Normalized <= 0) {
+    return 0;
+  }
+  if (Normalized >= 10000) {
+    return 10000;
+  }
+  
+  switch (Curve) {
+    case 1:  // Linear
+      Result = Normalized;
+      break;
+      
+    case 2:  // Square (default, recommended)
+      // Result = Normalized^2
+      Result = (Normalized * Normalized) / 10000;
+      break;
+      
+    case 3:  // S-curve (smoothstep: 3t^2 - 2t^3)
+      // Smoothstep function for smooth acceleration
+      // Formula: t * t * (3 - 2 * t)
+      {
+        INT32  T2;  // t^2
+        INT32  T3;  // t^3
+        
+        T2 = (Normalized * Normalized) / 10000;
+        T3 = (T2 * Normalized) / 10000;
+        
+        // Result = 3*t^2 - 2*t^3
+        Result = (3 * T2 - 2 * T3);
+      }
+      break;
+      
+    default:
+      Result = Normalized;
+      break;
+  }
+  
+  // Clamp to valid range
+  if (Result < 0) {
+    Result = 0;
+  }
+  if (Result > 10000) {
+    Result = 10000;
+  }
+  
+  return Result;
+}
+
+/**
+  Calculate mouse movement from analog stick input.
+  
+  @param  X           Stick X-axis value (-32768 ~ 32767)
+  @param  Y           Stick Y-axis value (-32768 ~ 32767)
+  @param  Config      Stick configuration
+  @param  OutDeltaX   Output: Mouse X delta (pixels)
+  @param  OutDeltaY   Output: Mouse Y delta (pixels)
+**/
+STATIC
+VOID
+CalculateMouseMovement (
+  IN  INT16         X,
+  IN  INT16         Y,
+  IN  STICK_CONFIG  *Config,
+  OUT INT32         *OutDeltaX,
+  OUT INT32         *OutDeltaY
+  )
+{
+  INT32  AbsX;
+  INT32  AbsY;
+  INT32  Magnitude;
+  INT32  Normalized;
+  INT32  Curved;
+  INT32  Speed;
+  INT32  DeltaX;
+  INT32  DeltaY;
+  
+  if (Config == NULL || OutDeltaX == NULL || OutDeltaY == NULL) {
+    return;
+  }
+  
+  *OutDeltaX = 0;
+  *OutDeltaY = 0;
+  
+  // Calculate magnitude
+  AbsX = (X < 0) ? -X : X;
+  AbsY = (Y < 0) ? -Y : Y;
+  Magnitude = (AbsX > AbsY) ? AbsX : AbsY;
+  
+  // Check deadzone
+  if (Magnitude < Config->Deadzone) {
+    return;
+  }
+  
+  // Normalize to 0-10000 (0.0 to 1.0 in fixed-point)
+  // Apply saturation
+  if (Magnitude > Config->Saturation) {
+    Magnitude = Config->Saturation;
+  }
+  
+  // Normalized = (Magnitude - Deadzone) / (Saturation - Deadzone)
+  // Prevent division-by-zero if Saturation equals Deadzone
+  if (Config->Saturation <= Config->Deadzone) {
+    return;  // No movement if configuration is invalid
+  }
+  
+  Normalized = ((Magnitude - Config->Deadzone) * 10000) / 
+               (Config->Saturation - Config->Deadzone);
+  
+  if (Normalized < 0) {
+    Normalized = 0;
+  }
+  if (Normalized > 10000) {
+    Normalized = 10000;
+  }
+  
+  // Apply response curve
+  Curved = ApplyResponseCurve(Normalized, Config->MouseCurve);
+  
+  // Calculate speed: Curved * Sensitivity * MaxSpeed
+  // Sensitivity: 1-100, MaxSpeed: pixels per poll
+  Speed = (Curved * Config->MouseSensitivity * Config->MouseMaxSpeed) / 
+          (10000 * 100);
+  
+  // Ensure minimum movement when curved input is non-zero
+  if (Speed < 1 && Curved > 0) {
+    Speed = 1;  // Minimum movement
+  }
+  
+  // Calculate directional movement
+  if (AbsX > AbsY) {
+    // Horizontal primary
+    DeltaX = (X > 0) ? Speed : -Speed;
+    DeltaY = (Y != 0) ? ((Speed * AbsY) / AbsX) : 0;
+    if (Y > 0) {
+      // Y positive (stick up) = screen up (negative Y)
+      DeltaY = -DeltaY;
+    }
+  } else {
+    // Vertical primary
+    // Y positive (stick up) = screen up (negative Y)
+    DeltaY = (Y > 0) ? -Speed : Speed;
+    DeltaX = (X != 0) ? ((Speed * AbsX) / AbsY) : 0;
+    if (X < 0) {
+      DeltaX = -DeltaX;
+    }
+  }
+  
+  *OutDeltaX = DeltaX;
+  *OutDeltaY = DeltaY;
+}
+
+/**
+  Calculate scroll delta from stick Y-axis input.
+  
+  @param  Y           Stick Y-axis value (-32768 ~ 32767)
+  @param  Config      Stick configuration
+  
+  @return Scroll delta (negative = down, positive = up)
+**/
+STATIC
+INT32
+CalculateScrollDelta (
+  IN INT16         Y,
+  IN STICK_CONFIG  *Config
+  )
+{
+  INT32  AbsY;
+  INT32  Magnitude;
+  INT32  Normalized;
+  INT32  ScrollDelta;
+  
+  if (Config == NULL) {
+    return 0;
+  }
+  
+  AbsY = (Y < 0) ? -Y : Y;
+  
+  // Check deadzone
+  if (AbsY < Config->Deadzone) {
+    return 0;
+  }
+  
+  // Normalize to 0-100
+  Magnitude = AbsY;
+  if (Magnitude > Config->Saturation) {
+    Magnitude = Config->Saturation;
+  }
+  
+  // Prevent division-by-zero if Saturation equals Deadzone
+  if (Config->Saturation <= Config->Deadzone) {
+    return 0;  // No scroll if configuration is invalid
+  }
+  
+  Normalized = ((Magnitude - Config->Deadzone) * 100) / 
+               (Config->Saturation - Config->Deadzone);
+  
+  // Apply sensitivity (1-100)
+  ScrollDelta = (Normalized * Config->ScrollSensitivity) / 100;
+  
+  // Minimum scroll delta
+  if (ScrollDelta < 1) {
+    ScrollDelta = 1;
+  }
+  
+  // Maximum scroll delta (prevent excessive scrolling)
+  if (ScrollDelta > 10) {
+    ScrollDelta = 10;
+  }
+  
+  // Return with direction (Y positive = scroll up = negative delta)
+  return (Y > 0) ? -ScrollDelta : ScrollDelta;
+}
+
+/**
+  Calculate analog stick direction based on X/Y values and configuration.
+  
+  @param  X       Stick X-axis value (-32768 ~ 32767)
+  @param  Y       Stick Y-axis value (-32768 ~ 32767)
+  @param  Config  Stick configuration
+  
+  @return Direction bitmask: BIT0=Up, BIT1=Down, BIT2=Left, BIT3=Right
+**/
+STATIC
+UINT8
+CalculateStickDirection (
+  IN INT16         X,
+  IN INT16         Y,
+  IN STICK_CONFIG  *Config
+  )
+{
+  INT32  Magnitude;
+  INT32  AbsX;
+  INT32  AbsY;
+  UINT8  Direction;
+  
+  if (Config == NULL) {
+    return 0;
+  }
+  
+  // Calculate magnitude (approximate: use max of abs values for efficiency)
+  AbsX = (X < 0) ? -X : X;
+  AbsY = (Y < 0) ? -Y : Y;
+  Magnitude = (AbsX > AbsY) ? AbsX : AbsY;
+  
+  // Check deadzone
+  if (Magnitude < Config->Deadzone) {
+    return 0;
+  }
+  
+  Direction = 0;
+  
+  if (Config->DirectionMode == 8) {
+    // 8-way mode: Independent check for each direction
+    // Threshold: ~38% (sin(22.5°) ≈ 0.38)
+    #define THRESHOLD_38 12500  // 32767 * 0.38
+    
+    if (Y > THRESHOLD_38)   Direction |= STICK_DIR_UP;
+    if (Y < -THRESHOLD_38)  Direction |= STICK_DIR_DOWN;
+    if (X < -THRESHOLD_38)  Direction |= STICK_DIR_LEFT;
+    if (X > THRESHOLD_38)   Direction |= STICK_DIR_RIGHT;
+  } else {
+    // 4-way mode: Choose primary direction
+    if (AbsX > AbsY) {
+      // Horizontal primary
+      if (X > Config->Deadzone) {
+        Direction = STICK_DIR_RIGHT;
+      } else if (X < -(INT32)Config->Deadzone) {
+        Direction = STICK_DIR_LEFT;
+      }
+    } else {
+      // Vertical primary
+      if (Y > Config->Deadzone) {
+        Direction = STICK_DIR_UP;
+      } else if (Y < -(INT32)Config->Deadzone) {
+        Direction = STICK_DIR_DOWN;
+      }
+    }
+  }
+  
+  return Direction;
+}
+
+/**
+  Process stick direction change and queue key transitions.
+  
+  @param  Device   USB keyboard device
+  @param  OldDir   Old direction bitmask
+  @param  NewDir   New direction bitmask
+  @param  Config   Stick configuration
+**/
+STATIC
+VOID
+ProcessStickDirectionChange (
+  IN USB_KB_DEV    *Device,
+  IN UINT8         OldDir,
+  IN UINT8         NewDir,
+  IN STICK_CONFIG  *Config
+  )
+{
+  UINT8  Changed;
+  
+  if (Device == NULL || Config == NULL) {
+    return;
+  }
+  
+  // Calculate which directions changed
+  Changed = OldDir ^ NewDir;
+  
+  if (Changed == 0) {
+    return;
+  }
+  
+  // Handle UP
+  if (Changed & STICK_DIR_UP) {
+    if (Config->UpMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->UpMapping,
+        (NewDir & STICK_DIR_UP) != 0
+      );
+    }
+  }
+  
+  // Handle DOWN
+  if (Changed & STICK_DIR_DOWN) {
+    if (Config->DownMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->DownMapping,
+        (NewDir & STICK_DIR_DOWN) != 0
+      );
+    }
+  }
+  
+  // Handle LEFT
+  if (Changed & STICK_DIR_LEFT) {
+    if (Config->LeftMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->LeftMapping,
+        (NewDir & STICK_DIR_LEFT) != 0
+      );
+    }
+  }
+  
+  // Handle RIGHT
+  if (Changed & STICK_DIR_RIGHT) {
+    if (Config->RightMapping != 0xFF) {
+      QueueButtonTransition(
+        Device,
+        Config->RightMapping,
+        (NewDir & STICK_DIR_RIGHT) != 0
+      );
+    }
+  }
+}
+
+/**
+  Process analog stick changes for both sticks.
+  
+  @param  Device      USB keyboard device
+  @param  OldLeftX    Old left stick X value
+  @param  OldLeftY    Old left stick Y value
+  @param  OldRightX   Old right stick X value
+  @param  OldRightY   Old right stick Y value
+**/
+STATIC
+VOID
+ProcessStickChanges (
+  IN USB_KB_DEV  *Device,
+  IN INT16       OldLeftX,
+  IN INT16       OldLeftY,
+  IN INT16       OldRightX,
+  IN INT16       OldRightY
+  )
+{
+  UINT8  OldLeftDir, NewLeftDir;
+  UINT8  OldRightDir, NewRightDir;
+  
+  if (Device == NULL) {
+    return;
+  }
+  
+  // Process left stick (Keys mode only)
+  if (GetGlobalConfig()->LeftStick.Mode == STICK_MODE_KEYS) {
+    OldLeftDir = CalculateStickDirection(
+      OldLeftX, 
+      OldLeftY, 
+      &GetGlobalConfig()->LeftStick
+    );
+    NewLeftDir = CalculateStickDirection(
+      Device->XboxState.LeftStickX, 
+      Device->XboxState.LeftStickY, 
+      &GetGlobalConfig()->LeftStick
+    );
+    
+    if (OldLeftDir != NewLeftDir) {
+      ProcessStickDirectionChange(
+        Device, 
+        OldLeftDir, 
+        NewLeftDir, 
+        &GetGlobalConfig()->LeftStick
+      );
+      Device->XboxState.LeftStickDir = NewLeftDir;
+    }
+  }
+  
+  // Process right stick (Keys mode only)
+  if (GetGlobalConfig()->RightStick.Mode == STICK_MODE_KEYS) {
+    OldRightDir = CalculateStickDirection(
+      OldRightX, 
+      OldRightY, 
+      &GetGlobalConfig()->RightStick
+    );
+    NewRightDir = CalculateStickDirection(
+      Device->XboxState.RightStickX, 
+      Device->XboxState.RightStickY, 
+      &GetGlobalConfig()->RightStick
+    );
+    
+    if (OldRightDir != NewRightDir) {
+      ProcessStickDirectionChange(
+        Device, 
+        OldRightDir, 
+        NewRightDir, 
+        &GetGlobalConfig()->RightStick
+      );
+      Device->XboxState.RightStickDir = NewRightDir;
+    }
+  }
+  
+  // Process mouse mode for either stick
+  if (GetGlobalConfig()->LeftStick.Mode == STICK_MODE_MOUSE || 
+      GetGlobalConfig()->RightStick.Mode == STICK_MODE_MOUSE) {
+    INT32  DeltaX = 0;
+    INT32  DeltaY = 0;
+    
+    // Calculate movement from active stick (left has priority)
+    if (GetGlobalConfig()->LeftStick.Mode == STICK_MODE_MOUSE) {
+      CalculateMouseMovement(
+        Device->XboxState.LeftStickX,
+        Device->XboxState.LeftStickY,
+        &GetGlobalConfig()->LeftStick,
+        &DeltaX,
+        &DeltaY
+      );
+    } else if (GetGlobalConfig()->RightStick.Mode == STICK_MODE_MOUSE) {
+      CalculateMouseMovement(
+        Device->XboxState.RightStickX,
+        Device->XboxState.RightStickY,
+        &GetGlobalConfig()->RightStick,
+        &DeltaX,
+        &DeltaY
+      );
+    }
+    
+    // Update mouse state if pointer protocol is installed
+    if (Device->SimplePointerInstalled) {
+      Device->SimplePointerState.RelativeMovementX = DeltaX;
+      Device->SimplePointerState.RelativeMovementY = DeltaY;
+    }
+  }
+  
+  // Process scroll mode for either stick
+  if (GetGlobalConfig()->LeftStick.Mode == STICK_MODE_SCROLL ||
+      GetGlobalConfig()->RightStick.Mode == STICK_MODE_SCROLL) {
+    INT32  ScrollDelta = 0;
+    
+    if (GetGlobalConfig()->LeftStick.Mode == STICK_MODE_SCROLL) {
+      ScrollDelta = CalculateScrollDelta(
+        Device->XboxState.LeftStickY,
+        &GetGlobalConfig()->LeftStick
+      );
+    } else if (GetGlobalConfig()->RightStick.Mode == STICK_MODE_SCROLL) {
+      ScrollDelta = CalculateScrollDelta(
+        Device->XboxState.RightStickY,
+        &GetGlobalConfig()->RightStick
+      );
+    }
+    
+    if (Device->SimplePointerInstalled) {
+      Device->SimplePointerState.RelativeMovementZ = ScrollDelta;
+    }
+  }
+  
+  //
+  // Workaround to maintain consistent polling rate:
+  // If in mouse/scroll mode but all deltas are zero, report EFI_NOT_READY
+  // will cause system to reduce polling frequency, making movement choppy.
+  // Solution: When button is pressed, it naturally maintains polling via HasUpdate.
+  // When button is not pressed, we rely on the movement deltas being reported.
+  // The key is that CalculateMouseMovement should return non-zero when stick
+  // is outside deadzone, which is already handled by "Speed = 1" minimum.
+  //
+}
+
+/**
+  Handler function for Xbox 360 controller asynchronous interrupt transfer.
+
+  The wired Xbox 360 controller sends a fixed length vendor specific report. This handler
+  maps the controller state into synthetic USB keyboard scan codes so the device can drive
+  the UEFI Simple Text Input (Ex) protocols.
+
+  @param  Data             A pointer to a buffer that is filled with key data which is
+                           retrieved via asynchronous interrupt transfer.
+  @param  DataLength       Indicates the size of the data buffer.
+  @param  Context          Pointing to USB_KB_DEV instance.
+  @param  Result           Indicates the result of the asynchronous interrupt transfer.
+
+  @retval EFI_SUCCESS      Asynchronous interrupt transfer is handled successfully.
+  @retval EFI_DEVICE_ERROR Hardware error occurs.
+
+**/
+EFI_STATUS
+EFIAPI
+KeyboardHandler (
+  IN  VOID    *Data,
+  IN  UINTN   DataLength,
+  IN  VOID    *Context,
+  IN  UINT32  Result
+  )
+{
+  USB_KB_DEV           *UsbKeyboardDevice;
+  EFI_USB_IO_PROTOCOL  *UsbIo;
+  UINT8                *Report;
+  UINT16               OldButtons;
+  UINT16               NewButtons;
+  UINT32               UsbStatus;
+
+  ASSERT (Context != NULL);
+
+  UsbKeyboardDevice = (USB_KB_DEV *)Context;
+  UsbIo             = UsbKeyboardDevice->UsbIo;
+
+  //
+  // Analyzes Result and performs corresponding action.
+  //
+  if (Result != EFI_USB_NOERROR) {
+    //
+    // Some errors happen during the process
+    //
+    REPORT_STATUS_CODE_WITH_DEVICE_PATH (
+      EFI_ERROR_CODE | EFI_ERROR_MINOR,
+      (EFI_PERIPHERAL_KEYBOARD | EFI_P_EC_INPUT_ERROR),
+      UsbKeyboardDevice->DevicePath
+      );
+
+    //
+    // Stop the repeat key generation if any
+    //
+    UsbKeyboardDevice->RepeatKey = 0;
+
+    gBS->SetTimer (
+           UsbKeyboardDevice->RepeatTimer,
+           TimerCancel,
+           USBKBD_REPEAT_RATE
+           );
+
+    if ((Result & EFI_USB_ERR_STALL) == EFI_USB_ERR_STALL) {
+      UsbClearEndpointHalt (
+        UsbIo,
+        UsbKeyboardDevice->IntEndpointDescriptor.EndpointAddress,
+        &UsbStatus
+        );
+    }
+
+    //
+    // Delete & Submit this interrupt again
+    // Handler of DelayedRecoveryEvent triggered by timer will re-submit the interrupt.
+    //
+    UsbIo->UsbAsyncInterruptTransfer (
+             UsbIo,
+             UsbKeyboardDevice->IntEndpointDescriptor.EndpointAddress,
+             FALSE,
+             0,
+             0,
+             NULL,
+             NULL
+             );
+    //
+    // EFI_USB_INTERRUPT_DELAY is defined in USB standard for error handling.
+    //
+    gBS->SetTimer (
+           UsbKeyboardDevice->DelayedRecoveryEvent,
+           TimerRelative,
+           EFI_USB_INTERRUPT_DELAY
+           );
+
+    return EFI_DEVICE_ERROR;
+  }
+
+  if ((Data == NULL) || (DataLength < 4)) {
+    return EFI_SUCCESS;
+  }
+
+  Report = (UINT8 *)Data;
+
+  //
+  // Parse button state (bytes 2-3)
+  //
+  OldButtons = UsbKeyboardDevice->XboxState.Buttons;
+  NewButtons = (UINT16)(Report[2] | ((UINT16)Report[3] << 8));
+  if (OldButtons != NewButtons) {
+    ProcessButtonChanges (UsbKeyboardDevice, OldButtons, NewButtons);
+    UsbKeyboardDevice->XboxState.Buttons = NewButtons;
+  }
+
+  //
+  // Parse trigger state (bytes 4-5)
+  //
+  if (DataLength >= 6) {
+    UINT8    LeftTrigger;
+    UINT8    RightTrigger;
+    BOOLEAN  LeftTriggerPressed;
+    BOOLEAN  RightTriggerPressed;
+    BOOLEAN  OldLeftTrigger;
+    BOOLEAN  OldRightTrigger;
+
+    LeftTrigger = Report[4];
+    RightTrigger = Report[5];
+
+    // Check triggers against threshold
+    LeftTriggerPressed = (LeftTrigger > GetGlobalConfig()->TriggerThreshold);
+    RightTriggerPressed = (RightTrigger > GetGlobalConfig()->TriggerThreshold);
+
+    // Get previous trigger states
+    OldLeftTrigger = UsbKeyboardDevice->XboxState.LeftTriggerActive;
+    OldRightTrigger = UsbKeyboardDevice->XboxState.RightTriggerActive;
+
+    // Handle left trigger state change
+    if (LeftTriggerPressed != OldLeftTrigger) {
+      UINT8 LeftTriggerMapping = GetGlobalConfig()->LeftTriggerKey;
+      
+      if (LeftTriggerMapping == FUNCTION_CODE_MOUSE_LEFT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.LeftButton = LeftTriggerPressed;
+        }
+      } else if (LeftTriggerMapping == FUNCTION_CODE_MOUSE_RIGHT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.RightButton = LeftTriggerPressed;
+        }
+      } else if (LeftTriggerMapping != 0xFF) {
+        // Standard keyboard key
+        QueueButtonTransition(
+          UsbKeyboardDevice,
+          LeftTriggerMapping,
+          LeftTriggerPressed
+        );
+      }
+      UsbKeyboardDevice->XboxState.LeftTriggerActive = LeftTriggerPressed;
+    }
+
+    // Handle right trigger state change
+    if (RightTriggerPressed != OldRightTrigger) {
+      UINT8 RightTriggerMapping = GetGlobalConfig()->RightTriggerKey;
+      
+      if (RightTriggerMapping == FUNCTION_CODE_MOUSE_LEFT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.LeftButton = RightTriggerPressed;
+        }
+      } else if (RightTriggerMapping == FUNCTION_CODE_MOUSE_RIGHT) {
+        if (UsbKeyboardDevice->SimplePointerInstalled) {
+          UsbKeyboardDevice->SimplePointerState.RightButton = RightTriggerPressed;
+        }
+      } else if (RightTriggerMapping != 0xFF) {
+        // Standard keyboard key
+        QueueButtonTransition(
+          UsbKeyboardDevice,
+          RightTriggerMapping,
+          RightTriggerPressed
+        );
+      }
+      UsbKeyboardDevice->XboxState.RightTriggerActive = RightTriggerPressed;
+    }
+  }
+
+  //
+  // Parse analog stick state (bytes 6-13)
+  //
+  if (DataLength >= 14) {
+    INT16  OldLeftX, OldLeftY, OldRightX, OldRightY;
+    
+    // Save old values
+    OldLeftX = UsbKeyboardDevice->XboxState.LeftStickX;
+    OldLeftY = UsbKeyboardDevice->XboxState.LeftStickY;
+    OldRightX = UsbKeyboardDevice->XboxState.RightStickX;
+    OldRightY = UsbKeyboardDevice->XboxState.RightStickY;
+    
+    // Read new values (little-endian, signed 16-bit)
+    UsbKeyboardDevice->XboxState.LeftStickX = 
+      (INT16)(Report[6] | ((UINT16)Report[7] << 8));
+    UsbKeyboardDevice->XboxState.LeftStickY = 
+      (INT16)(Report[8] | ((UINT16)Report[9] << 8));
+    UsbKeyboardDevice->XboxState.RightStickX = 
+      (INT16)(Report[10] | ((UINT16)Report[11] << 8));
+    UsbKeyboardDevice->XboxState.RightStickY = 
+      (INT16)(Report[12] | ((UINT16)Report[13] << 8));
+    
+    // Process stick changes (direction keys mode)
+    ProcessStickChanges(
+      UsbKeyboardDevice,
+      OldLeftX, OldLeftY, OldRightX, OldRightY
+    );
+  }
+
+  UsbKeyboardDevice->RepeatKey = 0;
+  if (UsbKeyboardDevice->RepeatTimer != NULL) {
+    gBS->SetTimer (
+           UsbKeyboardDevice->RepeatTimer,
+           TimerCancel,
+           USBKBD_REPEAT_RATE
+           );
+  }
+
+  return EFI_SUCCESS;
+}

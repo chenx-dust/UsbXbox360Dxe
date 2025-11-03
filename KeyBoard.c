@@ -8,64 +8,10 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 **/
 
 #include "KeyBoard.h"
-
-#define XBOX360_VENDOR_ID              0x045E
-#define XBOX360_PRODUCT_ID             0x028E
-
-#define XBOX360_BUTTON_DPAD_UP         BIT0
-#define XBOX360_BUTTON_DPAD_DOWN       BIT1
-#define XBOX360_BUTTON_DPAD_LEFT       BIT2
-#define XBOX360_BUTTON_DPAD_RIGHT      BIT3
-#define XBOX360_BUTTON_START           BIT4
-#define XBOX360_BUTTON_BACK            BIT5
-#define XBOX360_BUTTON_LEFT_THUMB      BIT6
-#define XBOX360_BUTTON_RIGHT_THUMB     BIT7
-#define XBOX360_BUTTON_LEFT_SHOULDER   BIT8
-#define XBOX360_BUTTON_RIGHT_SHOULDER  BIT9
-#define XBOX360_BUTTON_GUIDE           BIT10
-#define XBOX360_BUTTON_A               BIT12
-#define XBOX360_BUTTON_B               BIT13
-#define XBOX360_BUTTON_X               BIT14
-#define XBOX360_BUTTON_Y               BIT15
-
-typedef struct {
-  UINT16    ButtonMask;
-  UINT8     UsbKeyCode;
-} XBOX360_BUTTON_MAP;
-
-STATIC CONST XBOX360_BUTTON_MAP  mXbox360ButtonMap[] = {
-  { XBOX360_BUTTON_START,          0x2C }, // Space
-  { XBOX360_BUTTON_BACK,           0x2B }, // Tab
-  { XBOX360_BUTTON_A,              0x28 }, // Enter
-  { XBOX360_BUTTON_B,              0x29 }, // Escape
-  { XBOX360_BUTTON_X,              0x2A }, // Backspace
-  { XBOX360_BUTTON_Y,              0x2B }, // Tab
-  { XBOX360_BUTTON_LEFT_THUMB,     0xE0 }, // Left Control
-  { XBOX360_BUTTON_RIGHT_THUMB,    0xE2 }, // Left Alt
-  { XBOX360_BUTTON_LEFT_SHOULDER,  0x4B }, // Page Up
-  { XBOX360_BUTTON_RIGHT_SHOULDER, 0x4E }, // Page Down
-  { XBOX360_BUTTON_GUIDE,          0xE1 }, // Left Shift
-  { XBOX360_BUTTON_DPAD_UP,        0x52 }, // Up Arrow
-  { XBOX360_BUTTON_DPAD_DOWN,      0x51 }, // Down Arrow
-  { XBOX360_BUTTON_DPAD_LEFT,      0x50 }, // Left Arrow
-  { XBOX360_BUTTON_DPAD_RIGHT,     0x4F }  // Right Arrow
-};
-
-STATIC
-VOID
-QueueButtonTransition (
-  IN USB_KB_DEV  *UsbKeyboardDevice,
-  IN UINT8       KeyCode,
-  IN BOOLEAN     IsPressed
-  );
-
-STATIC
-VOID
-ProcessButtonChanges (
-  IN USB_KB_DEV  *UsbKeyboardDevice,
-  IN UINT16      OldButtons,
-  IN UINT16      NewButtons
-  );
+#include "Xbox360Log.h"
+#include "Xbox360Device.h"
+#include "Xbox360Config.h"
+#include "Xbox360Input.h"
 
 USB_KEYBOARD_LAYOUT_PACK_BIN  mUsbKeyboardLayoutBin = {
   sizeof (USB_KEYBOARD_LAYOUT_PACK_BIN),   // Binary size
@@ -413,36 +359,11 @@ InstallDefaultKeyboardLayout (
   return Status;
 }
 
-/**
-  Uses USB I/O to check whether the device is a USB keyboard device.
-
-  @param  UsbIo    Pointer to a USB I/O protocol instance.
-
-  @retval TRUE     Device is a USB keyboard device.
-  @retval FALSE    Device is a not USB keyboard device.
-
-**/
-BOOLEAN
-IsUSBKeyboard (
-  IN  EFI_USB_IO_PROTOCOL  *UsbIo
-  )
-{
-  EFI_STATUS                  Status;
-  EFI_USB_DEVICE_DESCRIPTOR   DeviceDescriptor;
-
-  Status = UsbIo->UsbGetDeviceDescriptor (UsbIo, &DeviceDescriptor);
-  if (EFI_ERROR (Status)) {
-    return FALSE;
-  }
-
-  if ((DeviceDescriptor.IdVendor == XBOX360_VENDOR_ID) &&
-      (DeviceDescriptor.IdProduct == XBOX360_PRODUCT_ID))
-  {
-    return TRUE;
-  }
-
-  return FALSE;
-}
+//
+// =============================================================================
+// Dynamic Device List Management
+// =============================================================================
+//
 
 /**
   Get current keyboard layout from HII database.
@@ -868,6 +789,16 @@ InitUSBKeyboard (
     UsbKeyboardDevice->DevicePath
     );
 
+  //
+  // Load configuration from file (or use defaults)
+  //
+  LoadConfigWithMigration(GetGlobalConfig());
+
+  //
+  // Initialize dynamic device list with custom devices
+  //
+  InitializeDeviceList(GetGlobalConfig());
+
   InitQueue (&UsbKeyboardDevice->UsbKeyQueue, sizeof (USB_KEY));
   InitQueue (&UsbKeyboardDevice->EfiKeyQueue, sizeof (EFI_KEY_DATA));
   InitQueue (&UsbKeyboardDevice->EfiKeyQueueForNotify, sizeof (EFI_KEY_DATA));
@@ -966,175 +897,29 @@ InitUSBKeyboard (
          &UsbKeyboardDevice->DelayedRecoveryEvent
          );
 
-  return EFI_SUCCESS;
-}
-
-STATIC
-VOID
-QueueButtonTransition (
-  IN USB_KB_DEV  *UsbKeyboardDevice,
-  IN UINT8       KeyCode,
-  IN BOOLEAN     IsPressed
-  )
-{
-  USB_KEY  UsbKey;
-
-  UsbKey.KeyCode = KeyCode;
-  UsbKey.Down    = IsPressed;
-  Enqueue (&UsbKeyboardDevice->UsbKeyQueue, &UsbKey, sizeof (UsbKey));
-
-  if (!IsPressed && (UsbKeyboardDevice->RepeatKey == KeyCode)) {
-    UsbKeyboardDevice->RepeatKey = 0;
-  }
-}
-
-STATIC
-VOID
-ProcessButtonChanges (
-  IN USB_KB_DEV  *UsbKeyboardDevice,
-  IN UINT16      OldButtons,
-  IN UINT16      NewButtons
-  )
-{
-  UINTN  Index;
-
-  for (Index = 0; Index < ARRAY_SIZE (mXbox360ButtonMap); Index++) {
-    UINT16   Mask;
-    BOOLEAN  WasPressed;
-    BOOLEAN  IsPressed;
-
-    Mask       = mXbox360ButtonMap[Index].ButtonMask;
-    WasPressed = ((OldButtons & Mask) != 0);
-    IsPressed  = ((NewButtons & Mask) != 0);
-
-    if (WasPressed == IsPressed) {
-      continue;
-    }
-
-    QueueButtonTransition (
-      UsbKeyboardDevice,
-      mXbox360ButtonMap[Index].UsbKeyCode,
-      IsPressed
-      );
-  }
-}
-
-/**
-  Handler function for Xbox 360 controller asynchronous interrupt transfer.
-
-  The wired Xbox 360 controller sends a fixed length vendor specific report. This handler
-  maps the controller state into synthetic USB keyboard scan codes so the device can drive
-  the UEFI Simple Text Input (Ex) protocols.
-
-  @param  Data             A pointer to a buffer that is filled with key data which is
-                           retrieved via asynchronous interrupt transfer.
-  @param  DataLength       Indicates the size of the data buffer.
-  @param  Context          Pointing to USB_KB_DEV instance.
-  @param  Result           Indicates the result of the asynchronous interrupt transfer.
-
-  @retval EFI_SUCCESS      Asynchronous interrupt transfer is handled successfully.
-  @retval EFI_DEVICE_ERROR Hardware error occurs.
-
-**/
-EFI_STATUS
-EFIAPI
-KeyboardHandler (
-  IN  VOID    *Data,
-  IN  UINTN   DataLength,
-  IN  VOID    *Context,
-  IN  UINT32  Result
-  )
-{
-  USB_KB_DEV           *UsbKeyboardDevice;
-  EFI_USB_IO_PROTOCOL  *UsbIo;
-  UINT8                *Report;
-  UINT16               OldButtons;
-  UINT16               NewButtons;
-  UINT32               UsbStatus;
-
-  ASSERT (Context != NULL);
-
-  UsbKeyboardDevice = (USB_KB_DEV *)Context;
-  UsbIo             = UsbKeyboardDevice->UsbIo;
-
   //
-  // Analyzes Result and performs corresponding action.
+  // Initialize SimplePointer protocol
   //
-  if (Result != EFI_USB_NOERROR) {
-    //
-    // Some errors happen during the process
-    //
-    REPORT_STATUS_CODE_WITH_DEVICE_PATH (
-      EFI_ERROR_CODE | EFI_ERROR_MINOR,
-      (EFI_PERIPHERAL_KEYBOARD | EFI_P_EC_INPUT_ERROR),
-      UsbKeyboardDevice->DevicePath
-      );
-
-    //
-    // Stop the repeat key generation if any
-    //
-    UsbKeyboardDevice->RepeatKey = 0;
-
-    gBS->SetTimer (
-           UsbKeyboardDevice->RepeatTimer,
-           TimerCancel,
-           USBKBD_REPEAT_RATE
-           );
-
-    if ((Result & EFI_USB_ERR_STALL) == EFI_USB_ERR_STALL) {
-      UsbClearEndpointHalt (
-        UsbIo,
-        UsbKeyboardDevice->IntEndpointDescriptor.EndpointAddress,
-        &UsbStatus
-        );
-    }
-
-    //
-    // Delete & Submit this interrupt again
-    // Handler of DelayedRecoveryEvent triggered by timer will re-submit the interrupt.
-    //
-    UsbIo->UsbAsyncInterruptTransfer (
-             UsbIo,
-             UsbKeyboardDevice->IntEndpointDescriptor.EndpointAddress,
-             FALSE,
-             0,
-             0,
-             NULL,
-             NULL
-             );
-    //
-    // EFI_USB_INTERRUPT_DELAY is defined in USB standard for error handling.
-    //
-    gBS->SetTimer (
-           UsbKeyboardDevice->DelayedRecoveryEvent,
-           TimerRelative,
-           EFI_USB_INTERRUPT_DELAY
-           );
-
-    return EFI_DEVICE_ERROR;
-  }
-
-  if ((Data == NULL) || (DataLength < 4)) {
-    return EFI_SUCCESS;
-  }
-
-  Report = (UINT8 *)Data;
-
-  OldButtons = UsbKeyboardDevice->XboxState.Buttons;
-  NewButtons = (UINT16)(Report[2] | ((UINT16)Report[3] << 8));
-  if (OldButtons != NewButtons) {
-    ProcessButtonChanges (UsbKeyboardDevice, OldButtons, NewButtons);
-    UsbKeyboardDevice->XboxState.Buttons = NewButtons;
-  }
-
-  UsbKeyboardDevice->RepeatKey = 0;
-  if (UsbKeyboardDevice->RepeatTimer != NULL) {
-    gBS->SetTimer (
-           UsbKeyboardDevice->RepeatTimer,
-           TimerCancel,
-           USBKBD_REPEAT_RATE
-           );
-  }
+  UsbKeyboardDevice->SimplePointer.Reset     = USBKeyboardSimplePointerReset;
+  UsbKeyboardDevice->SimplePointer.GetState  = USBKeyboardSimplePointerGetState;
+  UsbKeyboardDevice->SimplePointer.Mode      = &UsbKeyboardDevice->SimplePointerMode;
+  
+  //
+  // Initialize pointer mode (relative movement with button and scroll support)
+  //
+  UsbKeyboardDevice->SimplePointerMode.ResolutionX     = 1;
+  UsbKeyboardDevice->SimplePointerMode.ResolutionY     = 1;
+  UsbKeyboardDevice->SimplePointerMode.ResolutionZ     = 1;
+  UsbKeyboardDevice->SimplePointerMode.LeftButton      = TRUE;
+  UsbKeyboardDevice->SimplePointerMode.RightButton     = TRUE;
+  
+  //
+  // Initialize pointer state
+  //
+  ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  UsbKeyboardDevice->SimplePointerInstalled = FALSE;
+  UsbKeyboardDevice->LastReportedLeftButton = FALSE;
+  UsbKeyboardDevice->LastReportedRightButton = FALSE;
 
   return EFI_SUCCESS;
 }
@@ -1862,4 +1647,108 @@ USBKeyboardRecoveryHandler (
            KeyboardHandler,
            UsbKeyboardDevice
            );
+}
+
+/**
+  Resets the pointer device hardware.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  ExtendedVerification  Indicates that the driver may perform a more exhaustive
+                                verification operation of the device during reset.
+
+  @retval EFI_SUCCESS           The device was reset.
+  @retval EFI_DEVICE_ERROR      The device is not functioning correctly and could not be reset.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerReset (
+  IN EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  IN BOOLEAN                      ExtendedVerification
+  )
+{
+  USB_KB_DEV  *UsbKeyboardDevice;
+
+  UsbKeyboardDevice = SIMPLE_POINTER_USB_KB_DEV_FROM_THIS (This);
+
+  //
+  // Reset pointer state
+  //
+  ZeroMem (&UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  UsbKeyboardDevice->LastReportedLeftButton = FALSE;
+  UsbKeyboardDevice->LastReportedRightButton = FALSE;
+
+  return EFI_SUCCESS;
+}
+
+/**
+  Retrieves the current state of a pointer device.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  State                 A pointer to the state information on the pointer device.
+
+  @retval EFI_SUCCESS           The state of the pointer device was returned in State.
+  @retval EFI_NOT_READY         The state of the pointer device has not changed since the last call.
+  @retval EFI_DEVICE_ERROR      A device error occurred while attempting to retrieve the pointer
+                                device's current state.
+  @retval EFI_INVALID_PARAMETER State is NULL.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerGetState (
+  IN  EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  OUT EFI_SIMPLE_POINTER_STATE     *State
+  )
+{
+  USB_KB_DEV  *UsbKeyboardDevice;
+  BOOLEAN     HasMovement;
+  BOOLEAN     HasButtonChange;
+
+  if (State == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
+
+  UsbKeyboardDevice = SIMPLE_POINTER_USB_KB_DEV_FROM_THIS (This);
+
+  //
+  // Check if there's any movement (delta values)
+  //
+  HasMovement = (UsbKeyboardDevice->SimplePointerState.RelativeMovementX != 0) ||
+                (UsbKeyboardDevice->SimplePointerState.RelativeMovementY != 0) ||
+                (UsbKeyboardDevice->SimplePointerState.RelativeMovementZ != 0);
+
+  //
+  // Check if button state has CHANGED since last report
+  // This prevents repeated clicks when holding a button
+  //
+  HasButtonChange = (UsbKeyboardDevice->SimplePointerState.LeftButton != UsbKeyboardDevice->LastReportedLeftButton) ||
+                    (UsbKeyboardDevice->SimplePointerState.RightButton != UsbKeyboardDevice->LastReportedRightButton);
+
+  //
+  // Only report if there's movement OR button state change
+  //
+  if (!HasMovement && !HasButtonChange) {
+    return EFI_NOT_READY;
+  }
+
+  //
+  // Return current state
+  //
+  CopyMem (State, &UsbKeyboardDevice->SimplePointerState, sizeof (EFI_SIMPLE_POINTER_STATE));
+  
+  //
+  // Clear movement deltas
+  //
+  UsbKeyboardDevice->SimplePointerState.RelativeMovementX = 0;
+  UsbKeyboardDevice->SimplePointerState.RelativeMovementY = 0;
+  UsbKeyboardDevice->SimplePointerState.RelativeMovementZ = 0;
+  
+  //
+  // Update last reported button states
+  //
+  UsbKeyboardDevice->LastReportedLeftButton = UsbKeyboardDevice->SimplePointerState.LeftButton;
+  UsbKeyboardDevice->LastReportedRightButton = UsbKeyboardDevice->SimplePointerState.RightButton;
+
+  return EFI_SUCCESS;
 }
