@@ -297,7 +297,7 @@ CleanupOldLogFiles (
     DeleteCount = LogFileCount - XBOX360_LOG_MAX_FILES;
     for (Index = 0; Index < DeleteCount; Index++) {
       CHAR16 FilePath[128];
-      UnicodeSPrint (FilePath, sizeof(FilePath), L"\\EFI\\Xbox360\\%s", LogFiles[Index]);
+      UnicodeSPrint (FilePath, sizeof(FilePath), L"\\EFI\\Xbox360\\%S", LogFiles[Index]);
       
       Status = Root->Open (
                        Root,
@@ -345,7 +345,7 @@ CheckLogRotation (
   UINT64             FileSize;
   CHAR16             FilePath[128];
 
-  UnicodeSPrint (FilePath, sizeof(FilePath), L"\\EFI\\Xbox360\\%s", CurrentLog);
+  UnicodeSPrint (FilePath, sizeof(FilePath), L"\\EFI\\Xbox360\\%S", CurrentLog);
 
   // Try to open existing log file
   Status = Root->Open (
@@ -548,7 +548,7 @@ WriteToPartition:
     }
 
     // Open/create log file
-    UnicodeSPrint (LogFilePath, sizeof(LogFilePath), L"\\EFI\\Xbox360\\%s", LogFileName);
+    UnicodeSPrint (LogFilePath, sizeof(LogFilePath), L"\\EFI\\Xbox360\\%S", LogFileName);
     
     Status = Root->Open (
                      Root,

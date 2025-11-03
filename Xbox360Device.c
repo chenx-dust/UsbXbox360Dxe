@@ -252,14 +252,14 @@ IsUSBKeyboard (
         (DeviceDescriptor.IdProduct == mXbox360DeviceList[Index].ProductId))
     {
       // Found a match! Log the details
-      LOG_INFO ("MATCH FOUND! Device: %a (VID:0x%04X PID:0x%04X)%a",
+      LOG_INFO ("MATCH FOUND! Device: %s (VID:0x%04X PID:0x%04X)%a",
                 mXbox360DeviceList[Index].Description,
                 DeviceDescriptor.IdVendor,
                 DeviceDescriptor.IdProduct,
                 (Index >= XBOX360_BUILTIN_DEVICE_COUNT) ? " [CUSTOM]" : "");
       DEBUG ((
         DEBUG_INFO,
-        "Xbox360Dxe: Found compatible device: %a (VID:0x%04X PID:0x%04X)%a\n",
+        "Xbox360Dxe: Found compatible device: %s (VID:0x%04X PID:0x%04X)%a\n",
         mXbox360DeviceList[Index].Description,
         DeviceDescriptor.IdVendor,
         DeviceDescriptor.IdProduct,
