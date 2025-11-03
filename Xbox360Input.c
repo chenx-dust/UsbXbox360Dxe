@@ -16,30 +16,9 @@
 #include "KeyBoard.h"
 #include "EfiKey.h"
 
-// Button to keyboard mapping structure
+// Number of Xbox 360 buttons (16 bits, 0-15)
 //
-typedef struct {
-  UINT16    ButtonMask;
-  UINT8     UsbKeyCode;
-} XBOX360_BUTTON_MAP;
-
-STATIC CONST XBOX360_BUTTON_MAP  mXbox360ButtonMap[] = {
-  { XBOX360_BUTTON_START,          0x2C }, // Space
-  { XBOX360_BUTTON_BACK,           0x2B }, // Tab
-  { XBOX360_BUTTON_A,              0x28 }, // Enter
-  { XBOX360_BUTTON_B,              0x29 }, // Escape
-  { XBOX360_BUTTON_X,              0x2A }, // Backspace
-  { XBOX360_BUTTON_Y,              0x2B }, // Tab
-  { XBOX360_BUTTON_LEFT_THUMB,     0xE0 }, // Left Control
-  { XBOX360_BUTTON_RIGHT_THUMB,    0xE2 }, // Left Alt
-  { XBOX360_BUTTON_LEFT_SHOULDER,  0x4B }, // Page Up
-  { XBOX360_BUTTON_RIGHT_SHOULDER, 0x4E }, // Page Down
-  { XBOX360_BUTTON_GUIDE,          0xE1 }, // Left Shift
-  { XBOX360_BUTTON_DPAD_UP,        0x52 }, // Up Arrow
-  { XBOX360_BUTTON_DPAD_DOWN,      0x51 }, // Down Arrow
-  { XBOX360_BUTTON_DPAD_LEFT,      0x50 }, // Left Arrow
-  { XBOX360_BUTTON_DPAD_RIGHT,     0x4F }  // Right Arrow
-};
+#define XBOX360_BUTTON_COUNT  16
 
 
 STATIC
@@ -69,23 +48,30 @@ ProcessButtonChanges (
   IN UINT16      NewButtons
   )
 {
-  UINTN  Index;
+  UINTN           Index;
+  XBOX360_CONFIG  *Config;
 
-  for (Index = 0; Index < ARRAY_SIZE (mXbox360ButtonMap); Index++) {
+  Config = GetGlobalConfig ();
+
+  // Iterate through all 16 button bits (0-15)
+  for (Index = 0; Index < XBOX360_BUTTON_COUNT; Index++) {
     UINT16   Mask;
     BOOLEAN  WasPressed;
     BOOLEAN  IsPressed;
     UINT8    KeyMapping;
 
-    Mask       = mXbox360ButtonMap[Index].ButtonMask;
+    // Create button mask for this bit position
+    Mask       = (UINT16)(1 << Index);
     WasPressed = ((OldButtons & Mask) != 0);
     IsPressed  = ((NewButtons & Mask) != 0);
 
+    // Skip if button state hasn't changed
     if (WasPressed == IsPressed) {
       continue;
     }
 
-    KeyMapping = mXbox360ButtonMap[Index].UsbKeyCode;
+    // Get key mapping from user-configurable button map
+    KeyMapping = Config->ButtonMap[Index];
     
     // Check if this is a mouse button function code
     if (KeyMapping == FUNCTION_CODE_MOUSE_LEFT && UsbKeyboardDevice->SimplePointerInstalled) {
