@@ -5,6 +5,7 @@ This driver is modified from [edk2](https://github.com/tianocore/edk2) USB keybo
 ## Features
 
 - **40+ Built-in Device Support**: Xbox 360 controllers, handheld gaming devices (GPD, OneXPlayer, Legion Go, MSI Claw, etc.), 8BitDo, Logitech, HyperX, and more
+- **DirectInput Support**: Native support for ASUS ROG Ally/Ally X and other DirectInput devices
 - **Mouse Emulation**: Analog sticks can control mouse cursor and scroll wheel (via EFI_SIMPLE_POINTER_PROTOCOL)
 - **Trigger Button Support**: Left and Right triggers can be mapped to keyboard keys or mouse buttons
 - **Flexible Stick Modes**: Each stick can independently operate in Mouse, Keys, Scroll, or Disabled mode
@@ -138,13 +139,15 @@ The driver will log detected devices to debug output.
 ### Built-in Support (40+ devices)
 
 - **Microsoft**: Xbox 360 Wired/Wireless controllers
-- **Handheld Gaming Devices**:
+- **Handheld Gaming Devices (XInput)**:
   - GPD Win 2
   - OneXPlayer
   - Lenovo Legion Go / Legion Go S
   - MSI Claw
   - TECNO Pocket Go
   - ZOTAC Gaming Zone
+- **Handheld Gaming Devices (DirectInput)**:
+  - ASUS ROG Ally X
 - **8BitDo**: Ultimate, Pro 2, SN30 Pro, Ultimate 2/2C
 - **Logitech**: F310, F510, F710, Chillstream
 - **HyperX**: Clutch (wired/wireless)

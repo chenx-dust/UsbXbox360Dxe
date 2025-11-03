@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include "EfiKey.h"
 #include "KeyBoard.h"
+#include "AsusAllyDevice.h"
 
 //
 // USB Keyboard Driver Global Variables
@@ -190,18 +191,37 @@ USBKeyboardDriverBindingStart (
   LOG_INFO ("USB I/O protocol opened successfully");
 
   //
-  // Check if this is an MSI Claw controller and switch to XInput mode
+  // Allocate device structure first
   //
-  if (IsMsiClaw (UsbIo)) {
+  UsbKeyboardDevice = AllocateZeroPool (sizeof (USB_KB_DEV));
+  ASSERT (UsbKeyboardDevice != NULL);
+  
+  //
+  // Detect device type and perform device-specific initialization
+  //
+  if (IsAsusAlly (UsbIo)) {
+    // ASUS ROG Ally - DirectInput device
+    UsbKeyboardDevice->DeviceType = DEVICE_TYPE_ASUS_ALLY;
+    LOG_INFO ("Device type: ASUS ROG Ally (DirectInput)");
+    
+    Status = InitializeAsusAlly (UsbIo);
+    if (EFI_ERROR (Status)) {
+      LOG_WARN ("ASUS ROG Ally initialization failed: %r (continuing anyway)", Status);
+    }
+  } else if (IsMsiClaw (UsbIo)) {
+    // MSI Claw - Xbox 360 protocol with mode switching
+    UsbKeyboardDevice->DeviceType = DEVICE_TYPE_XBOX360;
+    LOG_INFO ("Device type: MSI Claw (Xbox 360 with mode switch)");
+    
     Status = SwitchMsiClawToXInputMode (UsbIo);
     if (EFI_ERROR (Status)) {
       LOG_WARN ("MSI Claw mode switch failed: %r (continuing anyway)", Status);
-      // Continue even if mode switch fails - device might still work
     }
+  } else {
+    // Standard Xbox 360 protocol device
+    UsbKeyboardDevice->DeviceType = DEVICE_TYPE_XBOX360;
+    LOG_INFO ("Device type: Xbox 360 protocol");
   }
-
-  UsbKeyboardDevice = AllocateZeroPool (sizeof (USB_KB_DEV));
-  ASSERT (UsbKeyboardDevice != NULL);
 
   //
   // Get the Device Path Protocol on Controller's handle
@@ -253,12 +273,21 @@ USBKeyboardDriverBindingStart (
   // Traverse endpoints to find interrupt endpoint IN
   //
   Found = FALSE;
+  LOG_INFO ("Scanning %d endpoints for interrupt IN endpoint...", EndpointNumber);
+  
   for (Index = 0; Index < EndpointNumber; Index++) {
     UsbIo->UsbGetEndpointDescriptor (
              UsbIo,
              Index,
              &EndpointDescriptor
              );
+
+    LOG_INFO ("  EP[%d]: Addr=0x%02X Attr=0x%02X MaxPkt=%d Interval=%d",
+              Index,
+              EndpointDescriptor.EndpointAddress,
+              EndpointDescriptor.Attributes,
+              EndpointDescriptor.MaxPacketSize,
+              EndpointDescriptor.Interval);
 
     if (((EndpointDescriptor.Attributes & (BIT0 | BIT1)) == USB_ENDPOINT_INTERRUPT) &&
         ((EndpointDescriptor.EndpointAddress & USB_ENDPOINT_DIR_IN) != 0))
@@ -268,6 +297,7 @@ USBKeyboardDriverBindingStart (
       //
       CopyMem (&UsbKeyboardDevice->IntEndpointDescriptor, &EndpointDescriptor, sizeof (EndpointDescriptor));
       Found = TRUE;
+      LOG_INFO ("  -> Selected as interrupt IN endpoint");
       break;
     }
   }
@@ -464,6 +494,38 @@ USBKeyboardDriverBindingStart (
     goto ErrorExit;
   }
 
+  //
+  // For ASUS Ally, create and start polling timer
+  // (device doesn't send async interrupt data, so we need polling)
+  //
+  if (UsbKeyboardDevice->DeviceType == DEVICE_TYPE_ASUS_ALLY) {
+    Status = gBS->CreateEvent (
+                    EVT_TIMER | EVT_NOTIFY_SIGNAL,
+                    TPL_CALLBACK,
+                    AsusAllyPollingHandler,
+                    UsbKeyboardDevice,
+                    &UsbKeyboardDevice->PollingTimer
+                    );
+    
+    if (!EFI_ERROR (Status)) {
+      // Start periodic timer: 100ms = 100000 * 100ns = 10000000
+      Status = gBS->SetTimer (
+                      UsbKeyboardDevice->PollingTimer,
+                      TimerPeriodic,
+                      1000000  // 100ms in 100ns units
+                      );
+      
+      if (EFI_ERROR (Status)) {
+        LOG_ERROR ("Failed to start polling timer: %r", Status);
+        gBS->CloseEvent (UsbKeyboardDevice->PollingTimer);
+        UsbKeyboardDevice->PollingTimer = NULL;
+      }
+    } else {
+      LOG_ERROR ("Failed to create polling timer: %r", Status);
+      UsbKeyboardDevice->PollingTimer = NULL;
+    }
+  }
+
   LOG_INFO ("USB async interrupt transfer started successfully");
 
   UsbKeyboardDevice->ControllerNameTable = NULL;
@@ -594,6 +656,15 @@ USBKeyboardDriverBindingStop (
     (EFI_PERIPHERAL_KEYBOARD | EFI_P_PC_DISABLE),
     UsbKeyboardDevice->DevicePath
     );
+
+  //
+  // Stop polling timer if it exists (ASUS Ally)
+  //
+  if (UsbKeyboardDevice->PollingTimer != NULL) {
+    gBS->SetTimer (UsbKeyboardDevice->PollingTimer, TimerCancel, 0);
+    gBS->CloseEvent (UsbKeyboardDevice->PollingTimer);
+    UsbKeyboardDevice->PollingTimer = NULL;
+  }
 
   //
   // Delete the Asynchronous Interrupt Transfer from this device
