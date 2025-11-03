@@ -1,3 +1,5 @@
 build_test/
-UsbXbox360Dxe.efi
-test_build.sh
+output/
+*.efi
+*.debug
+.vscode/

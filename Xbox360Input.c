@@ -639,7 +639,7 @@ KeyboardHandler (
   UINT32               UsbStatus;
   EFI_STATUS           Status;
   UINT8                Xbox360Report[20];  // Converted report buffer
-
+  
   ASSERT (Context != NULL);
 
   UsbKeyboardDevice = (USB_KB_DEV *)Context;
@@ -652,6 +652,8 @@ KeyboardHandler (
     //
     // Some errors happen during the process
     //
+    LOG_WARN ("USB interrupt transfer error: Result=0x%08X", Result);
+    
     REPORT_STATUS_CODE_WITH_DEVICE_PATH (
       EFI_ERROR_CODE | EFI_ERROR_MINOR,
       (EFI_PERIPHERAL_KEYBOARD | EFI_P_EC_INPUT_ERROR),
@@ -702,7 +704,13 @@ KeyboardHandler (
     return EFI_DEVICE_ERROR;
   }
 
-  if ((Data == NULL) || (DataLength < 4)) {
+  if (Data == NULL) {
+    LOG_WARN ("KeyboardHandler: Data is NULL");
+    return EFI_SUCCESS;
+  }
+  
+  if (DataLength < 4) {
+    LOG_WARN ("KeyboardHandler: DataLength too short (%d bytes)", (UINT32)DataLength);
     return EFI_SUCCESS;
   }
 
@@ -718,15 +726,12 @@ KeyboardHandler (
     //
     Status = ConvertAsusAllyToXbox360 (Data, DataLength, Xbox360Report);
     if (EFI_ERROR (Status)) {
-      LOG_WARN ("Failed to convert ASUS Ally report: %r", Status);
       return EFI_SUCCESS;
     }
     
     // Use converted report for processing
     Report = Xbox360Report;
     DataLength = sizeof(Xbox360Report);
-    
-    LOG_INFO ("ASUS Ally report converted successfully");
   }
 
   //

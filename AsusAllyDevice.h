@@ -149,5 +149,19 @@ ConvertAsusAllyToXbox360 (
   OUT UINT8   *XboxReport
   );
 
+/**
+  Polling timer callback for ASUS ROG Ally devices that don't support
+  async interrupt transfers.
+  
+  @param  Event     The timer event
+  @param  Context   Pointer to USB_KB_DEV instance
+**/
+VOID
+EFIAPI
+AsusAllyPollingHandler (
+  IN  EFI_EVENT  Event,
+  IN  VOID       *Context
+  );
+
 #endif // _ASUS_ALLY_DEVICE_H_
 

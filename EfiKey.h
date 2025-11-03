@@ -163,6 +163,8 @@ typedef struct {
   GAMEPAD_DEVICE_TYPE                  DeviceType;  // Type of gamepad device
 
   EFI_EVENT                            TimerEvent;
+  EFI_EVENT                            PollingTimer;  // Timer for ASUS Ally polling
+  UINT8                                PollingBuffer[64];  // Buffer for polling data
 
   UINT8                                RepeatKey;
   EFI_EVENT                            RepeatTimer;
