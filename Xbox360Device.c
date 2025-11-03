@@ -13,6 +13,7 @@
 #include "Xbox360Device.h"
 #include "Xbox360Log.h"
 #include "KeyBoard.h"
+#include "AsusAllyDevice.h"
 
 //
 // Known Xbox 360 protocol compatible devices
@@ -210,10 +211,12 @@ CleanupDeviceList (
   
   This function checks the device's VID/PID against the device list
   (built-in devices + custom devices from config).
+  
+  Now also supports ASUS ROG Ally DirectInput devices.
 
   @param  UsbIo    Pointer to USB I/O Protocol
 
-  @retval TRUE     Device is Xbox 360 compatible
+  @retval TRUE     Device is Xbox 360 compatible or ASUS ROG Ally
   @retval FALSE    Device is not compatible or error occurred
 **/
 BOOLEAN
@@ -235,6 +238,14 @@ IsUSBKeyboard (
   LOG_INFO ("Checking USB device: VID:0x%04X PID:0x%04X", 
             DeviceDescriptor.IdVendor, 
             DeviceDescriptor.IdProduct);
+  
+  //
+  // Priority 1: Check for ASUS ROG Ally devices (DirectInput)
+  // These devices do not support XInput mode and require special handling
+  //
+  if (IsAsusAlly (UsbIo)) {
+    return TRUE;
+  }
 
   // Initialize device list if not already done
   if (!mDeviceListInitialized) {

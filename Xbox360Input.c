@@ -15,6 +15,7 @@
 #include "Xbox360Config.h"
 #include "KeyBoard.h"
 #include "EfiKey.h"
+#include "AsusAllyDevice.h"
 
 // Number of Xbox 360 buttons (16 bits, 0-15)
 //
@@ -636,6 +637,8 @@ KeyboardHandler (
   UINT16               OldButtons;
   UINT16               NewButtons;
   UINT32               UsbStatus;
+  EFI_STATUS           Status;
+  UINT8                Xbox360Report[20];  // Converted report buffer
 
   ASSERT (Context != NULL);
 
@@ -704,6 +707,27 @@ KeyboardHandler (
   }
 
   Report = (UINT8 *)Data;
+
+  //
+  // Handle different device types
+  //
+  if (UsbKeyboardDevice->DeviceType == DEVICE_TYPE_ASUS_ALLY) {
+    //
+    // ASUS ROG Ally uses DirectInput HID reports
+    // Convert to Xbox 360 format for unified processing
+    //
+    Status = ConvertAsusAllyToXbox360 (Data, DataLength, Xbox360Report);
+    if (EFI_ERROR (Status)) {
+      LOG_WARN ("Failed to convert ASUS Ally report: %r", Status);
+      return EFI_SUCCESS;
+    }
+    
+    // Use converted report for processing
+    Report = Xbox360Report;
+    DataLength = sizeof(Xbox360Report);
+    
+    LOG_INFO ("ASUS Ally report converted successfully");
+  }
 
   //
   // Parse button state (bytes 2-3)

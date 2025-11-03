@@ -38,6 +38,8 @@
   Xbox360Config.h
   Xbox360Input.c
   Xbox360Input.h
+  AsusAllyDevice.c
+  AsusAllyDevice.h
 
 [Packages]
   MdePkg/MdePkg.dec

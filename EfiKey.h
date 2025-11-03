@@ -45,6 +45,15 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include "Xbox360Config.h"
 #include "Xbox360Input.h"
 
+//
+// Device type enumeration
+//
+typedef enum {
+  DEVICE_TYPE_XBOX360,      // Xbox 360 protocol devices
+  DEVICE_TYPE_ASUS_ALLY,    // ASUS ROG Ally DirectInput devices
+  DEVICE_TYPE_GENERIC_HID   // Generic HID gamepad (future)
+} GAMEPAD_DEVICE_TYPE;
+
 #define KEYBOARD_TIMER_INTERVAL  200000         // 0.02s
 
 #define MAX_KEY_ALLOWED  32
@@ -151,6 +160,7 @@ typedef struct {
   BOOLEAN                              CapsOn;
   BOOLEAN                              ScrollOn;
   XBOX360_INPUT_STATE                  XboxState;
+  GAMEPAD_DEVICE_TYPE                  DeviceType;  // Type of gamepad device
 
   EFI_EVENT                            TimerEvent;
 

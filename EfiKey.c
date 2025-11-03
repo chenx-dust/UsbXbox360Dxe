@@ -9,6 +9,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include "EfiKey.h"
 #include "KeyBoard.h"
+#include "AsusAllyDevice.h"
 
 //
 // USB Keyboard Driver Global Variables
@@ -190,18 +191,37 @@ USBKeyboardDriverBindingStart (
   LOG_INFO ("USB I/O protocol opened successfully");
 
   //
-  // Check if this is an MSI Claw controller and switch to XInput mode
+  // Allocate device structure first
   //
-  if (IsMsiClaw (UsbIo)) {
+  UsbKeyboardDevice = AllocateZeroPool (sizeof (USB_KB_DEV));
+  ASSERT (UsbKeyboardDevice != NULL);
+  
+  //
+  // Detect device type and perform device-specific initialization
+  //
+  if (IsAsusAlly (UsbIo)) {
+    // ASUS ROG Ally - DirectInput device
+    UsbKeyboardDevice->DeviceType = DEVICE_TYPE_ASUS_ALLY;
+    LOG_INFO ("Device type: ASUS ROG Ally (DirectInput)");
+    
+    Status = InitializeAsusAlly (UsbIo);
+    if (EFI_ERROR (Status)) {
+      LOG_WARN ("ASUS ROG Ally initialization failed: %r (continuing anyway)", Status);
+    }
+  } else if (IsMsiClaw (UsbIo)) {
+    // MSI Claw - Xbox 360 protocol with mode switching
+    UsbKeyboardDevice->DeviceType = DEVICE_TYPE_XBOX360;
+    LOG_INFO ("Device type: MSI Claw (Xbox 360 with mode switch)");
+    
     Status = SwitchMsiClawToXInputMode (UsbIo);
     if (EFI_ERROR (Status)) {
       LOG_WARN ("MSI Claw mode switch failed: %r (continuing anyway)", Status);
-      // Continue even if mode switch fails - device might still work
     }
+  } else {
+    // Standard Xbox 360 protocol device
+    UsbKeyboardDevice->DeviceType = DEVICE_TYPE_XBOX360;
+    LOG_INFO ("Device type: Xbox 360 protocol");
   }
-
-  UsbKeyboardDevice = AllocateZeroPool (sizeof (USB_KB_DEV));
-  ASSERT (UsbKeyboardDevice != NULL);
 
   //
   // Get the Device Path Protocol on Controller's handle
