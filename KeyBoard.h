@@ -12,6 +12,15 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include "EfiKey.h"
 
+//
+// Special function codes for mouse and scroll
+//
+#define FUNCTION_CODE_MOUSE_LEFT      0xF0  // Mouse left button
+#define FUNCTION_CODE_MOUSE_RIGHT     0xF1  // Mouse right button
+#define FUNCTION_CODE_MOUSE_MIDDLE    0xF2  // Mouse middle button (reserved)
+#define FUNCTION_CODE_SCROLL_UP       0xF3  // Scroll wheel up
+#define FUNCTION_CODE_SCROLL_DOWN     0xF4  // Scroll wheel down
+
 #define USB_KEYBOARD_KEY_COUNT  105
 
 #define USB_KEYBOARD_LANGUAGE_STR_LEN     5         // RFC4646 Language Code: "en-US"
@@ -71,6 +80,15 @@ IsUSBKeyboard (
 EFI_STATUS
 InitUSBKeyboard (
   IN OUT USB_KB_DEV  *UsbKeyboardDevice
+  );
+
+/**
+  Cleanup device list when driver unloads.
+  Frees allocated memory for dynamic device list.
+**/
+VOID
+CleanupDeviceList (
+  VOID
   );
 
 /**

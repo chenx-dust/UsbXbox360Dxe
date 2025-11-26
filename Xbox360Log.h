@@ -1,0 +1,94 @@
+/** @file
+  Xbox 360 Driver Logging System Header
+
+  This module provides logging functionality for the Xbox 360 driver.
+  Logs are written to daily rotating files on the ESP partition.
+
+  Copyright (c) 2024-2025. All rights reserved.
+  SPDX-License-Identifier: BSD-2-Clause-Patent
+
+**/
+
+#ifndef _XBOX360_LOG_H_
+#define _XBOX360_LOG_H_
+
+#include <Uefi.h>
+#include <Library/UefiLib.h>
+#include <Library/DebugLib.h>
+#include <Library/BaseMemoryLib.h>
+#include <Library/MemoryAllocationLib.h>
+#include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiRuntimeServicesTableLib.h>
+#include <Library/PrintLib.h>
+#include <Protocol/SimpleFileSystem.h>
+#include <Protocol/LoadedImage.h>
+#include <Guid/FileInfo.h>
+
+//
+// Logging configuration
+//
+#define XBOX360_LOG_ENABLED         1
+#define XBOX360_LOG_MAX_SIZE        (1024 * 1024)  // 1 MB per log file
+#define XBOX360_LOG_MAX_FILES       5              // Keep only last 5 log files
+
+//
+// Log levels
+//
+#define LOG_LEVEL_INFO    0
+#define LOG_LEVEL_WARN    1
+#define LOG_LEVEL_ERROR   2
+
+//
+// Logging macros for convenience
+//
+#define LOG_INFO(Format, ...)   Xbox360Log(LOG_LEVEL_INFO, Format, ##__VA_ARGS__)
+#define LOG_WARN(Format, ...)   Xbox360Log(LOG_LEVEL_WARN, Format, ##__VA_ARGS__)
+#define LOG_ERROR(Format, ...)  Xbox360Log(LOG_LEVEL_ERROR, Format, ##__VA_ARGS__)
+
+/**
+  Write a formatted log entry to the daily log file.
+  Log files are named "driver_YYYYMMDD.log" and are automatically rotated.
+
+  @param  Level    Log level (LOG_LEVEL_INFO/WARN/ERROR)
+  @param  Format   Printf-style format string (ASCII)
+  @param  ...      Variable arguments
+
+  @retval None
+**/
+VOID
+EFIAPI
+Xbox360Log (
+  IN UINT8        Level,
+  IN CONST CHAR8  *Format,
+  ...
+  );
+
+/**
+  Cleanup old log files (can be called on driver unload).
+  Removes log files older than the retention policy.
+
+  @retval None
+**/
+VOID
+EFIAPI
+Xbox360LogCleanup (
+  VOID
+  );
+
+/**
+  Set the driver's image handle for the logging system.
+  This allows the logging system to locate the correct ESP partition
+  from which the driver was loaded.
+
+  @param  ImageHandle  Driver's image handle from entry point
+
+  @retval None
+**/
+VOID
+EFIAPI
+Xbox360LogSetImageHandle (
+  IN EFI_HANDLE  ImageHandle
+  );
+
+#endif // _XBOX360_LOG_H_
+

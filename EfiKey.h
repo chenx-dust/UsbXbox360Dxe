@@ -14,12 +14,16 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 
 #include <Protocol/SimpleTextIn.h>
 #include <Protocol/SimpleTextInEx.h>
+#include <Protocol/SimplePointer.h>
 #include <Protocol/HiiDatabase.h>
 #include <Protocol/UsbIo.h>
 #include <Protocol/DevicePath.h>
+#include <Protocol/SimpleFileSystem.h>
+#include <Protocol/LoadedImage.h>
 
 #include <Guid/HiiKeyBoardLayout.h>
 #include <Guid/UsbKeyBoardLayout.h>
+#include <Guid/FileInfo.h>
 
 #include <Library/DebugLib.h>
 #include <Library/ReportStatusCodeLib.h>
@@ -32,8 +36,23 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Library/PcdLib.h>
 #include <Library/UefiUsbLib.h>
 #include <Library/HiiLib.h>
+#include <Library/PrintLib.h>
 
 #include <IndustryStandard/Usb.h>
+
+#include "Xbox360Log.h"
+#include "Xbox360Device.h"
+#include "Xbox360Config.h"
+#include "Xbox360Input.h"
+
+//
+// Device type enumeration
+//
+typedef enum {
+  DEVICE_TYPE_XBOX360,      // Xbox 360 protocol devices
+  DEVICE_TYPE_ASUS_ALLY,    // ASUS ROG Ally DirectInput devices
+  DEVICE_TYPE_GENERIC_HID   // Generic HID gamepad (future)
+} GAMEPAD_DEVICE_TYPE;
 
 #define KEYBOARD_TIMER_INTERVAL  200000         // 0.02s
 
@@ -94,10 +113,20 @@ typedef struct {
 
 typedef struct {
   UINT16   Buttons;
-  INT8     LeftStickXDir;
-  INT8     LeftStickYDir;
   BOOLEAN  LeftTriggerActive;
   BOOLEAN  RightTriggerActive;
+  
+  // Left stick raw values
+  INT16    LeftStickX;        // -32768 ~ 32767
+  INT16    LeftStickY;        // -32768 ~ 32767
+  
+  // Right stick raw values
+  INT16    RightStickX;
+  INT16    RightStickY;
+  
+  // Processed stick direction states (for Keys mode)
+  UINT8    LeftStickDir;      // BIT0=Up, BIT1=Down, BIT2=Left, BIT3=Right
+  UINT8    RightStickDir;
 } XBOX360_INPUT_STATE;
 
 ///
@@ -110,6 +139,12 @@ typedef struct {
   EFI_EVENT                            DelayedRecoveryEvent;
   EFI_SIMPLE_TEXT_INPUT_PROTOCOL       SimpleInput;
   EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL    SimpleInputEx;
+  EFI_SIMPLE_POINTER_PROTOCOL          SimplePointer;
+  EFI_SIMPLE_POINTER_MODE              SimplePointerMode;
+  EFI_SIMPLE_POINTER_STATE             SimplePointerState;
+  BOOLEAN                              SimplePointerInstalled;
+  BOOLEAN                              LastReportedLeftButton;
+  BOOLEAN                              LastReportedRightButton;
   EFI_USB_IO_PROTOCOL                  *UsbIo;
 
   EFI_USB_INTERFACE_DESCRIPTOR         InterfaceDescriptor;
@@ -125,8 +160,11 @@ typedef struct {
   BOOLEAN                              CapsOn;
   BOOLEAN                              ScrollOn;
   XBOX360_INPUT_STATE                  XboxState;
+  GAMEPAD_DEVICE_TYPE                  DeviceType;  // Type of gamepad device
 
   EFI_EVENT                            TimerEvent;
+  EFI_EVENT                            PollingTimer;  // Timer for ASUS Ally polling
+  UINT8                                PollingBuffer[64];  // Buffer for polling data
 
   UINT8                                RepeatKey;
   EFI_EVENT                            RepeatTimer;
@@ -174,6 +212,8 @@ extern EFI_COMPONENT_NAME2_PROTOCOL  gUsbKeyboardComponentName2;
     CR(a, USB_KB_DEV, SimpleInput, USB_KB_DEV_SIGNATURE)
 #define TEXT_INPUT_EX_USB_KB_DEV_FROM_THIS(a) \
     CR(a, USB_KB_DEV, SimpleInputEx, USB_KB_DEV_SIGNATURE)
+#define SIMPLE_POINTER_USB_KB_DEV_FROM_THIS(a) \
+    CR(a, USB_KB_DEV, SimplePointer, USB_KB_DEV_SIGNATURE)
 
 //
 // According to Universal Serial Bus HID Usage Tables document ver 1.12,
@@ -621,6 +661,43 @@ EFIAPI
 KeyNotifyProcessHandler (
   IN  EFI_EVENT  Event,
   IN  VOID       *Context
+  );
+
+/**
+  Resets the pointer device hardware.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  ExtendedVerification  Indicates that the driver may perform a more exhaustive
+                                verification operation of the device during reset.
+
+  @retval EFI_SUCCESS           The device was reset.
+  @retval EFI_DEVICE_ERROR      The device is not functioning correctly and could not be reset.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerReset (
+  IN EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  IN BOOLEAN                      ExtendedVerification
+  );
+
+/**
+  Retrieves the current state of a pointer device.
+
+  @param  This                  A pointer to the EFI_SIMPLE_POINTER_PROTOCOL instance.
+  @param  State                 A pointer to the state information on the pointer device.
+
+  @retval EFI_SUCCESS           The state of the pointer device was returned in State.
+  @retval EFI_NOT_READY         The state of the pointer device has not changed since the last call.
+  @retval EFI_DEVICE_ERROR      A device error occurred while attempting to retrieve the pointer
+                                device's current state.
+
+**/
+EFI_STATUS
+EFIAPI
+USBKeyboardSimplePointerGetState (
+  IN  EFI_SIMPLE_POINTER_PROTOCOL  *This,
+  OUT EFI_SIMPLE_POINTER_STATE     *State
   );
 
 #endif
